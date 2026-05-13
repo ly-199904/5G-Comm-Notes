@@ -9,7 +9,7 @@ hero:
   actions:
     - theme: brand
       text: 开始学习 Phase 1 →
-      link: /phase1/numerology
+      link: /phase1/
     - theme: alt
       text: 查看仿真代码库
       link: /code/frame-structure-sim
