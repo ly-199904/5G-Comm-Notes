@@ -68,51 +68,17 @@ Phase 1 学习路径
 ### 2. 完整信道映射关系表
 
 **参考：38.321 Table 6.1-1（下行）& Table 6.2-1（上行）**
+<ChannelMapExplorer />
 
-#### 2.1 下行映射
-
-```
-逻辑信道                 传输信道              物理信道
-─────────────────────────────────────────────────────────────────
-BCCH ──────────────┬──→ BCH  ─────────────→ PBCH
-（广播控制）       │
-                   └──→ DL-SCH ──────────→ PDSCH
-                               ↑
-PCCH ──────────────────────────┤           （+ DMRS 辅助解调）
-（寻呼控制）                   │
-                               │
-CCCH ──────────────────────────┤
-（公共控制）                   │
-                               │
-DCCH ──────────────────────────┤
-（专用控制）                   │
-                               │
-DTCH ──────────────────────────┘
-（专用业务）
-
-                        ─（无传输信道）─ → PDCCH  ← DCI 承载调度信息
-                                                    （不来自逻辑信道！）
-```
-
-> **重要区别**：PDCCH 承载的 DCI（下行控制信息）**不经过逻辑信道和传输信道**，直接由 PHY 层生成。这是 PDCCH 与所有其他信道最本质的区别。
-
-#### 2.2 上行映射
-
-```
-逻辑信道                 传输信道              物理信道
-─────────────────────────────────────────────────────────────────
-CCCH ──────────────┬──→ UL-SCH ──────────→ PUSCH
-（公共控制）       │               ↑          （DFT-s-OFDM 或 CP-OFDM）
-                   │               │
-DCCH ──────────────┤               │
-（专用控制）       │               │
-                   │               │
-DTCH ───────────────────────────────
-（专用业务）
-
-                        ─（无传输信道）─ → PUCCH  ← UCI: HARQ-ACK/SR/CSI
-                        ─（无传输信道）─ → PRACH   ← 随机接入前导
-```
+> **重要区别：**
+PDCCH / PUCCH / PRACH 都属于直接由 PHY 层生成的物理信道
+>
+> - **PDCCH** 承载 DCI（Downlink Control Information），不经过逻辑信道与传输信道，直接由 PHY 层生成并映射到物理资源。
+>
+> - **PUCCH** 承载 HARQ-ACK / CSI / SR 等上行控制信息，不经过传输信道，由 PHY 层直接生成 UCI（Uplink Control Information）。
+>
+> - **PRACH** 用于随机接入前导传输，发送的是 Zadoff-Chu 序列而非 MAC 数据，因此也不存在逻辑信道与传输信道映射关系。
+>
 
 ---
 
@@ -236,19 +202,60 @@ Transport Block（来自 MAC 层的 IP 数据）
 
 #### 关键步骤深挖：LDPC Base Graph 选择
 
-```
-             码率 R
-             │
-         低码率│         高码率
-             │
-   大 TB ────┼──────────────── → BG1（大图，22×Zc 列）
-             │                     适合高吞吐量 eMBB
-   小 TB ────┼──────────────── → BG2（小图，10×Zc 列）
-             │                     适合低码率、小包场景
-             
-选择准则（38.212 §7.2.2）：
-  若 A ≤ 292，或（A ≤ 3824 且 R ≤ 0.67），或 R ≤ 0.25 → BG2
-  否则 → BG1
+```mermaid
+flowchart LR
+
+    %% ===== 输入 =====
+    A([🔢 输入<br/>TB大小 A<br/>码率 R])
+
+    %% ===== 判决 =====
+    B{A ≤ 292?}
+
+    C{A ≤ 3824<br/>且 R ≤ 0.67?}
+
+    D{R ≤ 0.25?}
+
+    %% ===== BG2 =====
+    BG2(["✅ Base Graph 
+    • 10 × Zc 列（小图）
+    • 适合：小包 · 低码率
+    • URLLC / mMTC 场景"])
+
+    %% ===== BG1 =====
+    BG1(["✅ Base Graph 
+    • 22 × Zc 列（大图）
+    • 适合：大TB · 高码率
+    • eMBB 高吞吐场景"])
+
+    %% ===== 连线 =====
+    A --> B
+
+    B -->|是| BG2
+    B -->|否| C
+
+    C -->|是| BG2
+    C -->|否| D
+
+    D -->|是| BG2
+    D -->|否| BG1
+
+    %% ===== 样式 =====
+    style A fill:#6b7280,color:#ffffff,stroke:none
+
+    style B fill:#f3f4f6,color:#111827,stroke:#d1d5db
+    style C fill:#f3f4f6,color:#111827,stroke:#d1d5db
+    style D fill:#f3f4f6,color:#111827,stroke:#d1d5db
+
+    style BG2 fill:#16a34a,color:#ffffff,stroke:none
+    style BG1 fill:#2563eb,color:#ffffff,stroke:none
+
+    %% ===== 布局优化 =====
+    linkStyle 0 stroke:#333,stroke-width:1.5px
+    linkStyle 1 stroke:#333,stroke-width:1.5px
+    linkStyle 2 stroke:#333,stroke-width:1.5px
+    linkStyle 3 stroke:#333,stroke-width:1.5px
+    linkStyle 4 stroke:#333,stroke-width:1.5px
+    linkStyle 5 stroke:#333,stroke-width:1.5px
 ```
 
 #### 关键步骤深挖：HARQ 重传与冗余版本（RV）
@@ -383,31 +390,46 @@ ZC 序列的关键特性：恒包络（PAPR = 0 dB）、完美自相关、不同
 
 ### 9. 信道间耦合关系：一次 PDSCH 传输的完整协议交互
 
+NR 的一次数据传输，本质上是：
+> **控制信道决定资源，数据信道承载业务，反馈信道驱动 HARQ 闭环。**
+
 这张图展示了各信道在实际调度中如何配合工作——理解这个流程，后续的 HARQ、AMC、波束管理学习都会更容易"落地"：
 
-```
-                    gNB                              UE
-                     │                               │
-  [DL 调度决策]      │                               │
-  ─ CSI-RS 测量结果  │────── PDCCH ────────────────→│  DCI format 1_1
-  ─ CQI/RI/PMI 报告  │       (CORESET#1, AL=2)       │  告知：MCS/RB分配/HARQ进程
-  ─ HARQ 缓冲区状态  │                               │
-                     │                               │  [解 DCI]
-                     │                               │  ↓
-                     │────── PDSCH ─────────────────→│  按 DCI 指示解调
-                     │       (256QAM, 106 RB, 12sym)  │  LDPC 解码
-                     │                               │
-                     │                               │  [HARQ 判决]
-                     │                               │  CRC OK → ACK
-                     │                               │  CRC fail → NACK
-                     │                               │
-  [HARQ 响应]        │←────── PUCCH ─────────────────│  Format 1, 1-bit ACK
-                     │       (Format 1)               │
-                     │                               │
-                     │←────── PUSCH ─────────────────│  （如有 SRS 复用）
-                     │       (含 SRS / CSI 上报)      │
-```
+```mermaid
+sequenceDiagram
+    autonumber
 
+    participant G as 🏢 gNB
+    participant U as 📱 UE
+
+    Note over G: 调度决策<br/>CQI / PMI · HARQ状态 · QoS
+
+    %% Step 1
+    G->>U: PDCCH（DCI Format 1_1）<br/>MCS · RB分配 · HARQ ID
+
+    Note over U: 解析 DCI
+
+    %% Step 2
+    G->>U: PDSCH<br/>256QAM · 106 RB × 12 symbols
+
+    Note over U: LDPC 解码 + CRC 校验
+
+    alt CRC 校验通过
+        Note over U: ✅ ACK
+        U->>G: PUCCH Format 1<br/>1-bit ACK
+
+    else CRC 校验失败
+        Note over U: ❌ NACK
+        U->>G: PUCCH Format 1<br/>1-bit NACK
+
+        Note over G,U: HARQ 重传等待下一次调度
+    end
+
+    %% Step 4
+    U-->>G: PUSCH（可选业务数据）
+
+    U-->>G: CSI 周期上报 / SRS
+```
 ---
 
 ## 🔍 实战信令视角（IE / Log Analysis）

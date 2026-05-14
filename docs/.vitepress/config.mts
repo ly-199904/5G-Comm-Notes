@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitepress'
+import { withMermaid } from 'vitepress-plugin-mermaid'
 
-export default defineConfig({
+export default withMermaid(defineConfig({
   title: '5G & Satellite Comms Notes',
   description: 'From 3GPP Protocol to Runnable Waveform · 从协议原文到可运行波形',
   lang: 'zh-CN',
@@ -89,4 +90,4 @@ export default defineConfig({
       { icon: 'github', link: 'https://github.com/YOUR_USERNAME/5g-comm-notes' },
     ],
   },
-})
+}))

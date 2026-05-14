@@ -129,7 +129,7 @@ $$
 | 2 | 60 kHz | 4 | 40 | 250 μs | 560 |
 | 3 | 120 kHz | 8 | 80 | 125 μs | 1120 |
 | 4 | 240 kHz | 16 | 160 | 62.5 μs | 2240 |
-
+<NumerologySlider />
 ---
 
 ### 4. 物理时序单位 $T_c$ 与 $T_s$
@@ -298,6 +298,33 @@ UE 发射侧预补偿流程（38.821 Section 6.3.3）
 | 1 | U×14 | 全 UL slot（上行突发） |
 | 28 | D×12, F, U | DL-heavy，末尾 UL 用于 HARQ-ACK |
 | 34 | D, F, U×12 | UL-heavy，首符号 DL 控制信道 |
+
+**四种典型 Format 的时域图样：**
+
+```mermaid
+gantt
+    title Slot Format 时域结构（14 个 OFDM 符号）
+    dateFormat X
+    axisFormat %s
+
+    section Format 0（全DL）
+    D : 0, 14
+
+    section Format 1（全UL）
+    U : 0, 14
+
+    section Format 28（DL为主）
+    D : 0, 12
+    F : 12, 13
+    U : 13, 14
+
+    section Format 34（UL为主）
+    D : 0, 1
+    F : 1, 2
+    U : 2, 14
+```
+
+> 📌 **D** = Downlink（固定下行）· **U** = Uplink（固定上行）· **F** = Flexible（动态由 DCI 2_0 指定）
 
 **关键 IE**：
 - `tdd-UL-DL-ConfigurationCommon`：SIB1 广播，所有 UE 共享的基础配置

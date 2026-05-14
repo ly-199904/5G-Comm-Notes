@@ -12,5 +12,15 @@
                 "panel": "new"
             }
         },
+        {
+            "label": "🟦【一键同步】Push-to-GitHub",
+            "type": "shell",
+            "command": "git add . && git commit -m 'update notes' && git push",
+            "problemMatcher": [],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
     ]
 }
