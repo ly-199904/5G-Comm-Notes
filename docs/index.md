@@ -5,14 +5,14 @@ layout: home
 hero:
   name: "5G & Satellite Comms Notes"
   text: "Personal Research Notebook(๑•ᴗ•๑)"
-  tagline: My great project tagline
+  tagline: 面向通信工程师的实战知识库
   actions:
     - theme: brand
       text: 开始学习 Phase 1 →
       link: /phase1/
     - theme: alt
       text: 查看仿真代码库
-      link: /code/frame-structure-sim
+      link: /code/numerology-sim
 
 features:
   - icon: 📡

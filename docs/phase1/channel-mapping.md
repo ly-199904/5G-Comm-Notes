@@ -144,6 +144,26 @@ PDCCH / PUCCH / PRACH 都属于直接由 PHY 层生成的物理信道
 频域：20 RB（240 个子载波）
 ```
 
+:::details 📖 PT-RS 详解：为什么 FR2 专属？
+
+**PT-RS（Phase Tracking Reference Signal）** 用于估计和补偿本振（Local Oscillator）
+的相位噪声（Phase Noise）。
+
+**相位噪声的频率依赖性**：相位噪声功率谱密度与载频的平方成正比：
+
+$$S_\phi(f) \propto f_c^2$$
+
+- FR1（< 6 GHz）：相位噪声较小，PDSCH DMRS 已足够补偿
+- FR2（24~52 GHz）：相位噪声比 FR1 大约 **16 倍**（频率比约 4 倍，平方后 16 倍）
+  → 符号间的相位旋转显著，必须用 PT-RS 逐符号跟踪补偿
+
+**PT-RS 资源位置**：
+- 频域：极稀疏（每 2/4 个 RB 仅 1 个 PT-RS RE）
+- 时域：每个 OFDM 符号均有（与 DMRS 不同，DMRS 只在特定符号）
+- 总开销极小（< 1%），但对 FR2 EVM 改善显著
+
+**3GPP 参考**：38.211 §7.4.1.2（DL PT-RS），§6.4.1.2（UL PT-RS）
+:::
 ---
 
 ### 5. 深度剖析：PDSCH 传输处理全链路（12 步）
@@ -199,6 +219,18 @@ Transport Block（来自 MAC 层的 IP 数据）
       ▼
    IFFT → CP → 发射
 ```
+#### PDSCH Mapping Type A vs Type B
+
+| 维度 | Type A（Slot-based）| Type B（Mini-slot-based）|
+|---|---|---|
+| 起始符号 | 符号 #0 / #1 / #2 / #3（由 startSymbolIndex 决定）| 任意符号 |
+| 最小时长 | 3 个符号 | **2 个符号** |
+| DMRS 位置 | 固定在**符号 #2 或 #3**（dmrs-TypeA-Position）| 调度起始符号的第一个符号 |
+| 典型用途 | eMBB 标准调度（全 slot）| URLLC / Mini-slot 低时延 |
+| 3GPP 参考 | 38.211 §7.4.1.1.2 | 38.211 §7.4.1.1.3 |
+
+> ⚠️ **排障关键**：gNB 和 UE 对 Mapping Type 的配置必须一致，否则 DMRS 位置错位，
+> 信道估计失败，表现为 PDSCH BLER 高但 PDCCH 解码正常。
 
 #### 关键步骤深挖：LDPC Base Graph 选择
 
@@ -310,6 +342,19 @@ DCI 比特流（Format 0_0 / 1_0 / 0_1 / 1_1 / 2_x）
                        天线端口 p = 2000；按 k（子载波）升序，再按 l（符号）升序
                        跳过 PDCCH-DMRS 占用的 RE
 ```
+
+#### CORESET 与 Search Space 速览
+
+**CORESET（Control Resource Set）**：PDCCH 的时频资源容器。
+
+| 参数 | 说明 | 配置方式 |
+|---|---|---|
+| 频域 RB 数 | 必须是 6 的倍数（6/12/18...96）| `frequencyDomainResources`（45 bit bitmap）|
+| 时域符号数 | 1 / 2 / 3 | `duration` |
+| CCE-REG 映射 | 交织 / 非交织 | `cce-REG-MappingType` |
+| CORESET#0 | 由 MIB `pdcch-ConfigSIB1` 隐式查表决定 | 38.213 Table 13-x |
+
+**Search Space**：UE 在 CORESET 内盲检 DCI 的时频位置规则，定义"什么时候看、看哪里"。CORESET 定义"资源在哪"，Search Space 定义"何时去找"。
 
 #### RNTI 速查表（影响 PDCCH 解码的关键）
 

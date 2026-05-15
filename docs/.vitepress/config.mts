@@ -6,7 +6,7 @@ export default withMermaid(defineConfig({
   description: 'From 3GPP Protocol to Runnable Waveform · 从协议原文到可运行波形',
   lang: 'zh-CN',
 
-  base: '/5g-comm-notes/',
+  base: '/5G-Comm-Notes/',
 
   markdown: {
     math: true,
@@ -77,17 +77,17 @@ export default withMermaid(defineConfig({
     outline: { level: [2, 3] },
 
     editLink: {
-      pattern: 'https://github.com/YOUR_USERNAME/5g-comm-notes/edit/main/docs/:path',
+      pattern: 'https://github.com/ly-199904/5G-Comm-Notes/edit/main/docs/:path',
       text: '在 GitHub 上编辑此页',
     },
 
     footer: {
       message: '基于 3GPP Rel-15/16/17 学习记录 | 代码均为 PyTorch 实现',
-      copyright: '© 2025 Your Name',
+      copyright: '© 2025 LY',
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/YOUR_USERNAME/5g-comm-notes' },
+      { icon: 'github', link: 'https://github.com/ly-199904/5G-Comm-Notes' },
     ],
   },
 }))

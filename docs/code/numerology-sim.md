@@ -1,3 +1,5 @@
+> 📂 代码库导航： > [numerology_sim.py](./numerology-sim) 
+
 # numerology_sim.py · 仿真说明文档
 
 > **对应理论笔记**：[Numerology + 帧结构](/phase1/numerology)

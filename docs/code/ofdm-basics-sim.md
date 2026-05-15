@@ -1,3 +1,5 @@
+> 📂 代码库导航： > [ofdm_basics_sim.py](./ofdm-basics-sim) 
+
 # ofdm_basics_sim.py · 仿真说明文档
 
 > **对应理论笔记**：[OFDM 基础](/phase1/ofdm-basics)

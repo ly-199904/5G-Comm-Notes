@@ -1,3 +1,5 @@
+> 📂 代码库导航： > [channel_mapping_sim.py](./channel-mapping-sim) 
+
 # channel_mapping_sim.py · 仿真说明文档
 
 > **对应理论笔记**：[信道映射 Channel Mapping](/phase1/channel-mapping)

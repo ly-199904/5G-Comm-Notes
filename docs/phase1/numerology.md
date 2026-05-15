@@ -96,6 +96,16 @@ $$
 | 3 | 120 kHz | 8.33 μs | 0.57 μs | **8.92 μs** |
 | 4 | 240 kHz | 4.17 μs | 0.29 μs | **4.46 μs** |
 
+> ⚠️ **注意**：每个 slot 的第 0 个 OFDM 符号 CP 比其他符号略长（约多 16 个采样），
+> 目的是维持 0.5 ms 子帧边界的整数样点对齐（源于 LTE 兼容性设计）：
+>
+> | μ | 第 0 符号 CP | 其他符号 CP |
+> |:---:|:---:|:---:|
+> | 0 | 5.21 μs（160 × Ts）| 4.69 μs（144 × Ts）|
+> | 1 | 2.60 μs | 2.34 μs |
+> | 2 | 1.30 μs | 1.17 μs |
+>
+> 表格中列出的值为**普通符号（非第一个符号）**的 CP 时长。
 ---
 
 ### 3. 帧结构的推导：从 SCS 到 Slot
@@ -255,6 +265,19 @@ UE 发射侧预补偿流程（38.821 Section 6.3.3）
                残余时延误差: ~ ns 量级（受 GNSS 精度限制，3m → 10ns）
                残余频率误差: < 100~200 Hz（受星历精度和计算延迟限制）
 ```
+#### Rel-17 NTN 的 TA 双层架构
+
+```
+总 TA = Common TA（网络广播）+ Service Link TA（UE 自主计算）
+         ↓                          ↓
+  补偿馈电链路时延              补偿卫星→UE 时延
+  (gNB→卫星，固定)              (卫星→UE，随位置变化)
+  来源：ta-Info-r17              来源：UE GNSS + 星历计算
+```
+
+**暗坑**：若 UE 实现将 Common TA 重复叠加（即两次都补偿了馈电链路），
+上行时序会偏移一个 Common TA 的量（约数百 μs），
+导致 PRACH 和 PUSCH 均超出基带检测窗口。
 
 **关键结论**：
 
@@ -302,26 +325,44 @@ UE 发射侧预补偿流程（38.821 Section 6.3.3）
 **四种典型 Format 的时域图样：**
 
 ```mermaid
-gantt
-    title Slot Format 时域结构（14 个 OFDM 符号）
-    dateFormat X
-    axisFormat %s
+flowchart LR
+    subgraph F0["Format 0 · 全 DL"]
+        direction LR
+        d0[D] --- d1[D] --- d2[D] --- d3[D] --- d4[D] --- d5[D] --- d6[D] --- d7[D] --- d8[D] --- d9[D] --- d10[D] --- d11[D] --- d12[D] --- d13[D]
+    end
+    subgraph F28["Format 28 · DL 为主"]
+        direction LR
+        e0[D] --- e1[D] --- e2[D] --- e3[D] --- e4[D] --- e5[D] --- e6[D] --- e7[D] --- e8[D] --- e9[D] --- e10[D] --- e11[D] --- e12[F] --- e13[U]
+    end
+    subgraph F34["Format 34 · UL 为主"]
+        direction LR
+        f0[D] --- f1[F] --- f2[U] --- f3[U] --- f4[U] --- f5[U] --- f6[U] --- f7[U] --- f8[U] --- f9[U] --- f10[U] --- f11[U] --- f12[U] --- f13[U]
+    end
+    subgraph F1["Format 1 · 全 UL"]
+        direction LR
+        g0[U] --- g1[U] --- g2[U] --- g3[U] --- g4[U] --- g5[U] --- g6[U] --- g7[U] --- g8[U] --- g9[U] --- g10[U] --- g11[U] --- g12[U] --- g13[U]
+    end
 
-    section Format 0（全DL）
-    D : 0, 14
+    style d0 fill:#3a6a8f,color:#fff,stroke:none
+    style d1 fill:#3a6a8f,color:#fff,stroke:none
+    style d2 fill:#3a6a8f,color:#fff,stroke:none
+    style d3 fill:#3a6a8f,color:#fff,stroke:none
+    style d4 fill:#3a6a8f,color:#fff,stroke:none
+    style d5 fill:#3a6a8f,color:#fff,stroke:none
+    style d6 fill:#3a6a8f,color:#fff,stroke:none
+    style d7 fill:#3a6a8f,color:#fff,stroke:none
+    style d8 fill:#3a6a8f,color:#fff,stroke:none
+    style d9 fill:#3a6a8f,color:#fff,stroke:none
+    style d10 fill:#3a6a8f,color:#fff,stroke:none
+    style d11 fill:#3a6a8f,color:#fff,stroke:none
+    style d12 fill:#3a6a8f,color:#fff,stroke:none
+    style d13 fill:#3a6a8f,color:#fff,stroke:none
 
-    section Format 1（全UL）
-    U : 0, 14
+    style e12 fill:#7a5baf,color:#fff,stroke:none
+    style e13 fill:#4a8e62,color:#fff,stroke:none
 
-    section Format 28（DL为主）
-    D : 0, 12
-    F : 12, 13
-    U : 13, 14
-
-    section Format 34（UL为主）
-    D : 0, 1
-    F : 1, 2
-    U : 2, 14
+    style f0 fill:#3a6a8f,color:#fff,stroke:none
+    style f1 fill:#7a5baf,color:#fff,stroke:none
 ```
 
 > 📌 **D** = Downlink（固定下行）· **U** = Uplink（固定上行）· **F** = Flexible（动态由 DCI 2_0 指定）
@@ -330,6 +371,29 @@ gantt
 - `tdd-UL-DL-ConfigurationCommon`：SIB1 广播，所有 UE 共享的基础配置
 - `tdd-UL-DL-ConfigurationDedicated`：RRC Reconfiguration，UE 专属精细配置
 
+#### 6.1 Mini-Slot：比 Slot 更小的调度单元
+
+标准 Slot 含 14 个符号（Normal CP），对于 URLLC 场景，
+等待一整个 slot 完成调度再发送的时延仍然过高。
+
+NR 引入了 **Mini-Slot**，支持在 slot 内任意位置开始的短调度单元：
+
+| Mini-Slot 长度 | 起始符号 | 典型用途 |
+|:---:|---|---|
+| **2 符号** | 任意偶数符号 | URLLC 超低时延数据 |
+| **4 符号** | 任意符号 | URLLC 数据 + 控制 |
+| **7 符号** | 0 或 7 | 半个 slot，通用 |
+
+**时延对比**（μ=1，SCS=30kHz）：
+
+| 调度粒度 | 时长 | 适用场景 |
+|---|---|---|
+| 完整 Slot（14 符号）| 500 μs | eMBB 标准调度 |
+| Mini-Slot（7 符号）| 250 μs | 工业控制 |
+| Mini-Slot（2 符号）| 71 μs | 工厂自动化、URLLC |
+
+> **3GPP 参考**：38.213 §9（PDSCH/PUSCH 时域资源分配），
+> Mini-Slot 对应 PDSCH Mapping Type B（Type A 为 Slot-based）。
 ---
 
 ## 🔍 实战信令视角（IE / Log Analysis）
