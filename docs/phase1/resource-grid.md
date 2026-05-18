@@ -181,6 +181,7 @@ DCI 中指定的 RB 实际上是**虚拟资源块（VRB）**，最终还需映�
 **VRB → PRB 映射**：
 - 非交织（Non-interleaved）：VRB#n 直接对应 PRB#n，一对一
 - 交织（Interleaved）：VRB 经过打乱映射到不连续 PRB，获得频率分集
+
 ---
 
 ### 4. Point A：频域坐标系的绝对锚点
@@ -199,7 +200,7 @@ $$
 
 其中：
 - $f_\text{SSB,RB0,SC0}$：SSB 最低资源块的最低子载波频率
-- $\text{offsetToPointA}$：从 Point A 到 SSB 起点的**距离**（以参考 SCS 的 RB 数计）
+- $\text{offsetToPointA}$：SSB 最低 RB 距 Point A 的 RB 数偏移（以参考 SCS 为单位），方向为高频→低频 
 - $BW_\text{RB,ref}$：参考 SCS 的 RB 带宽（FR1 = 15 kHz × 12 = 180 kHz）
 
 #### 方式 B：`absoluteFrequencyPointA`（RRC 配置阶段）

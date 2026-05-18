@@ -312,7 +312,7 @@ def simulate_cbra(
                 ue.attempt += 1
                 continue
 
-        ta_cmd = max(0, int(one_way * 1e3 / 16 / (1 / 480e6 * 1e9)))  # 近似 TA command
+        ta_cmd = round(one_way * 1e-3 / (16 * 0.509e-9))  # 近似 TA command
         tc_rnti = tc_rnti_base + ue.ue_id
         ue.tc_rnti = tc_rnti
         print(f"  UE#{ue.ue_id}: RAR 接收 ✅  TC-RNTI=0x{tc_rnti:04X}  TA_cmd={ta_cmd}")

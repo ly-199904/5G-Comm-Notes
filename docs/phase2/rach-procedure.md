@@ -94,6 +94,8 @@ CFRA（Contention Free Random Access，非竞争接入）：
   适用：切换、Beam 失败恢复（需 UE 已在连接态）
 ```
 
+<CollisionProbabilityChart />
+
 ---
 
 ### 3. 4-Step CBRA 完整流程（初始接入）
@@ -137,6 +139,8 @@ UE 侧行为                                    协议层
 
 在 PRACH 资源上发射 Preamble                   PHY → 空口
 ```
+
+<PRACHResourceMap />
 
 **PRACH 格式选择关键参数**：
 
@@ -349,6 +353,8 @@ NR RACH（尤其 mmWave FR2）：
 可用 SSB 数量 > RACH Occasion 数量时：
   多个 SSB 共享一个 RACH Occasion（用 Preamble 范围区分）
 ```
+
+<NTNWindowAnalyzer />
 
 ---
 
