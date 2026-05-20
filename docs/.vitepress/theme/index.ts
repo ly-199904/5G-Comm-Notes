@@ -8,6 +8,9 @@ import FreqParamTree from '../components/FreqParamTree.vue'
 import NTNWindowAnalyzer       from '../components/NTNWindowAnalyzer.vue'
 import CollisionProbabilityChart from '../components/CollisionProbabilityChart.vue'
 import PRACHResourceMap        from '../components/PRACHResourceMap.vue'
+import DCIFieldParser       from '../components/DCIFieldParser.vue'
+import BlindDecodingVisualizer from '../components/BlindDecodingVisualizer.vue'
+import CORESETConfigurator        from '../components/CORESETConfigurator.vue'
 
 export default {
   extends: DefaultTheme,
@@ -20,5 +23,8 @@ export default {
     app.component('NTNWindowAnalyzer', NTNWindowAnalyzer)
     app.component('CollisionProbabilityChart', CollisionProbabilityChart)
     app.component('PRACHResourceMap', PRACHResourceMap)
+    app.component('DCIFieldParser', DCIFieldParser)
+    app.component('BlindDecodingVisualizer', BlindDecodingVisualizer)
+    app.component('CORESETConfigurator', CORESETConfigurator)
   }
 }

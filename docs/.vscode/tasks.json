@@ -24,3 +24,25 @@
         },
     ]
 }
+
+// # 在项目根目录执行，打包时排除 node_modules
+// Compress-Archive -Path docs, simulation, package.json, package-lock.json -DestinationPath 5G-Comm-Notes-review.zip
+
+// # 在 D:\Projects\5G-Comm-Notes 执行
+// Copy-Item "$HOME\Downloads\DCIFieldParser.vue"       "docs\.vitepress\components\DCIFieldParser.vue"
+// Copy-Item "$HOME\Downloads\BlindDecodingVisualizer.vue"       "docs\.vitepress\components\BlindDecodingVisualizer.vue"
+// Copy-Item "$HOME\Downloads\CORESETConfigurator.vue"       "docs\.vitepress\components\CORESETConfigurator.vue"
+
+// 打开 docs/.vitepress/theme/index.ts
+// import DCIFieldParser       from '../components/DCIFieldParser.vue'
+// import BlindDecodingVisualizer from '../components/BlindDecodingVisualizer.vue'
+// import CORESETConfigurator        from '../components/CORESETConfigurator.vue'
+
+// enhanceApp 内补充：
+// app.component('DCIFieldParser', DCIFieldParser)
+// app.component('BlindDecodingVisualizer', BlindDecodingVisualizer)
+// app.component('CORESETConfigurator', CORESETConfigurator)
+
+// <DCIFieldParser />
+// <BlindDecodingVisualizer />
+// <CORESETConfigurator />

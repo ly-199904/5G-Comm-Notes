@@ -125,6 +125,8 @@ pdcch-ConfigSIB1 = 8 bits
   低 4 bits → search-space-zero index → 查表得 Search Space #0 的监听周期
 ```
 
+<CORESETConfigurator />
+
 ---
 
 ### 3. Search Space："何时何地盲检"的规则书
@@ -217,6 +219,8 @@ FOR 每个 AL in {1, 2, 4, 8, 16}:
 | 增强（Rel-15）| **最多 4 个 SS，3 个 CORESET** | — |
 
 这意味着：并非所有 SS 和 AL 组合都能无限配置，gNB 必须在"灵活性"和"UE 处理能力"之间权衡。
+
+<BlindDecodingVisualizer />
 
 ---
 
@@ -332,6 +336,8 @@ DCI format 1_1（DL 调度，C-RNTI 加扰）字段清单：
 为了防止 UE 盲检时"大小不匹配"导致混淆，38.212 §7.3.1.0 规定：
 - 同一个 Search Space 内，所有 DCI 的大小必须相同（若不同则填充 padding bits）
 - DCI 0_0 和 1_0 的大小需相同（若不同则对较小者补零）
+
+<DCIFieldParser />
 
 ---
 
