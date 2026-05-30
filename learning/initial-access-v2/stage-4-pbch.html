@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Stage 4 · PBCH 解码 & MIB</title>
+<link rel="stylesheet" href="design-system.css">
+</head>
+<body>
+<div id="app"></div>
+<script src="stage-data.js"></script>
+<script src="engine.js"></script>
+<script>
+/* Stage 4 · PBCH 解码 & MIB */
+
+function renderDiscuss() {
+  var col = '#2563eb';
+  return '<svg viewBox="0 0 720 495" width="100%" height="100%"' +
+    ' preserveAspectRatio="xMidYMid meet" style="max-height:400px"' +
+    ' xmlns="http://www.w3.org/2000/svg">' +
+    '<rect x="14" y="14" width="692" height="372" rx="14" fill="#f8fafc" stroke="#d4dce8" stroke-width="1.5"/>' +
+    '<rect x="14" y="14" width="692" height="46" rx="14" fill="' + col + '" opacity=".08"/>' +
+    '<text x="360" y="38" text-anchor="middle" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="14" font-weight="800" fill="' + col + '">' +
+    'Stage 4 · PBCH 解码 & MIB</text>' +
+    '<text x="360" y="68" text-anchor="middle" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="11" fill="#64748b">&#9654; 理论探讨模式</text>' +
+    _renderCtxBox(col) +
+    '<text x="360" y="338" text-anchor="middle" dominant-baseline="central"' +
+    ' font-family="Georgia,serif" font-size="11" fill="#94a3b8" font-style="italic">' +
+    '查看右侧面板了解本阶段理论背景，再点击 [下一步] 进入仿真</text>' +
+    '<text x="360" y="362" text-anchor="middle" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="10" fill="#d4dce8">' +
+    'TS 38.212 §7.1</text>' +
+    '</svg>';
+}
+
+function renderSim() {
+  var col = '#2563eb';
+  return '<svg viewBox="0 0 720 495" width="100%" height="100%"' +
+    ' preserveAspectRatio="xMidYMid meet" style="max-height:400px"' +
+    ' xmlns="http://www.w3.org/2000/svg">' +
+    '<rect x="14" y="14" width="692" height="372" rx="14" fill="#f8fafc" stroke="#d4dce8" stroke-width="1.5"/>' +
+    '<rect x="14" y="14" width="692" height="46" rx="14" fill="' + col + '" opacity=".08"/>' +
+    '<text x="360" y="38" text-anchor="middle" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="14" font-weight="800" fill="' + col + '">' +
+    'Stage 4 · PBCH 解码 & MIB</text>' +
+    '<text x="360" y="68" text-anchor="middle" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="11" fill="#64748b">&#9654; 仿真开发中</text>' +
+    _renderCtxBox(col) +
+    '<rect x="214" y="278" width="292" height="44" rx="10"' +
+    ' fill="' + col + '" opacity=".1" stroke="' + col + '" stroke-width="1.5"/>' +
+    '<text x="360" y="300" text-anchor="middle" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="12" fill="' + col + '" font-weight="700">' +
+    '&#128295; 精确仿真内容即将上线</text>' +
+    '</svg>';
+}
+
+function _renderCtxBox(col) {
+  var ctx = window.NR_CTX || {};
+  var pci   = ctx.pci   != null ? String(ctx.pci)   : '---';
+  var gscn  = ctx.gscn  != null ? String(ctx.gscn)  : '---';
+  var kssb  = ctx.kssb  != null ? String(ctx.kssb)  : '---';
+  var scs   = ctx.scs_khz ? String(ctx.scs_khz)+'kHz' : '30kHz';
+  var rrc   = ctx.rrc_state  || 'IDLE';
+  var crnti = ctx.c_rnti != null ? String(ctx.c_rnti) : '---';
+  var ta    = ctx.ta_ns  != null ? String(ctx.ta_ns)+'ns' : '---';
+  return '<rect x="48" y="94" width="624" height="162" rx="8" fill="white" stroke="#d4dce8" stroke-width="1"/>' +
+    '<rect x="48" y="94" width="624" height="26" rx="8" fill="#f8fafc"/>' +
+    '<text x="360" y="108" text-anchor="middle" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="11" font-weight="700" fill="#334155">' +
+    'NR_CTX · 全局上下文（前序 Stage 写入值）</text>' +
+    '<text x="78" y="136" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="11" fill="#1d4ed8">' +
+    'PCI: ' + pci + '</text>' +
+    '<text x="210" y="136" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="11" fill="#1d4ed8">' +
+    'GSCN: ' + gscn + '</text>' +
+    '<text x="346" y="136" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="11" fill="#1d4ed8">' +
+    'k_SSB: ' + kssb + '</text>' +
+    '<text x="466" y="136" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="11" fill="#1d4ed8">' +
+    'SCS: ' + scs + '</text>' +
+    '<text x="78" y="162" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="11" fill="#059669">' +
+    'RRC: ' + rrc + '</text>' +
+    '<text x="210" y="162" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="11" fill="#059669">' +
+    'C-RNTI: ' + crnti + '</text>' +
+    '<text x="390" y="162" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="11" fill="#059669">' +
+    'TA: ' + ta + '</text>' +
+    '<text x="78" y="192" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="10" fill="#94a3b8">' +
+    'TS 38.212 §7.1  ·  3GPP Rel-15/16/17</text>' +
+    '<text x="78" y="212" dominant-baseline="central"' +
+    ' font-family="SF Mono,Consolas,monospace" font-size="10" fill="#d4dce8">' +
+    '前序 Stage 交互产生的所有物理量此处均可读取，依赖链完整。</text>';
+}
+
+Engine.renderVizSVG = function(subIdx) {
+  if (subIdx === 0) return renderDiscuss();
+  return renderSim();
+};
+
+Engine.boot({ stageIdx: 4 });
+</script>
+</body>
+</html>

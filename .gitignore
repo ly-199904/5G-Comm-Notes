@@ -2,8 +2,8 @@ node_modules/
 docs/.vitepress/dist/
 docs/.vitepress/cache/
 simulation/__pycache__/
-simulation/**/*.png 
-simulation/**/*.jpg 
+simulation/**/*.png
+simulation/**/*.jpg
 *.pyc
 .DS_Store
 Thumbs.db

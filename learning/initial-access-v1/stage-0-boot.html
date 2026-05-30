@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stage ⓪ · 终端唤醒与协议基因载入</title>
+<link rel="stylesheet" href="design-system.css">
+</head>
+<body>
+<div id="app"></div>
+
+<script src="engine.js"></script>
+<script src="stage-data.js"></script>
+<script>
+(function() {
+  'use strict';
+
+  var VW = 720, VH = 405;
+
+  Engine.renderVizSVG = function(subIdx, state) {
+
+    /* ── Sub-step 0: 晶振起振与物理层时间基准建立 ─────────────────── */
+    if (subIdx === 0) {
+      return '<svg viewBox="0 0 ' + VW + ' ' + VH + '" width="100%" height="100%" style="display:block;">' +
+        '<text x="360" y="24" text-anchor="middle" font-size="14" font-weight="700" fill="var(--text-main)">NR 原子时间基准 Tc 的物理源头</text>' +
+
+        /* ── TCXO Box ── */
+        '<g transform="translate(20,62)">' +
+          '<rect x="0" y="0" width="155" height="140" rx="10" fill="var(--surface)" stroke="var(--purple)" stroke-width="1.8"/>' +
+          '<rect x="0" y="0" width="155" height="32" rx="10" fill="var(--purple-bg)"/>' +
+          '<rect x="0" y="20" width="155" height="12" fill="var(--purple-bg)"/>' +
+          '<text x="77" y="21" text-anchor="middle" font-size="11" font-weight="700" fill="var(--purple)" font-family="var(--font-mono)">38.4 MHz TCXO</text>' +
+          '<text x="77" y="54" text-anchor="middle" font-size="9" fill="var(--text-mut)">温补晶振 · ±0.1ppm</text>' +
+          '<path d="M 22,90 Q 36,58 50,90 Q 64,122 78,90 Q 92,58 106,90 Q 120,122 134,90" fill="none" stroke="var(--purple)" stroke-width="1.5" opacity="0.7"/>' +
+          '<text x="77" y="125" text-anchor="middle" font-size="8.5" fill="var(--text-mut)" font-family="var(--font-mono)">周期 ≈ 26.04 ns</text>' +
+        '</g>' +
+
+        /* ── Flow Arrow TCXO → PLL ── */
+        '<g transform="translate(178,130)">' +
+          '<path d="M 0,0 L 58,0" fill="none" stroke="var(--brand)" stroke-width="2.5" stroke-dasharray="6 4">' +
+            '<animate attributeName="stroke-dashoffset" values="20;0" dur="0.8s" repeatCount="indefinite"/>' +
+          '</path>' +
+          '<polygon points="52,-5 62,0 52,5" fill="var(--brand)"/>' +
+          '<text x="30" y="-10" text-anchor="middle" font-size="8" fill="var(--text-mut)">时钟信号传导</text>' +
+        '</g>' +
+
+        /* ── PLL Box ── */
+        '<g transform="translate(236,62)">' +
+          '<rect x="0" y="0" width="120" height="140" rx="10" fill="var(--surface)" stroke="var(--brand)" stroke-width="1.5"/>' +
+          '<text x="60" y="24" text-anchor="middle" font-size="11" font-weight="700" fill="var(--brand)" font-family="var(--font-mono)">PLL 锁相环</text>' +
+          '<text x="60" y="42" text-anchor="middle" font-size="8.5" fill="var(--text-mut)">频率合成器</text>' +
+          '<line x1="14" y1="54" x2="106" y2="54" stroke="var(--border)" stroke-width="0.5"/>' +
+          '<text x="60" y="76" text-anchor="middle" font-size="10" fill="var(--text-sec)" font-family="var(--font-mono)">Nf = 4096 点 FFT</text>' +
+          '<text x="60" y="96" text-anchor="middle" font-size="10" fill="var(--text-sec)" font-family="var(--font-mono)">Δf_max = 480 kHz</text>' +
+          '<text x="60" y="116" text-anchor="middle" font-size="9" fill="var(--text-mut)">采样率 ≈ 1.97 GHz</text>' +
+          '<text x="60" y="134" text-anchor="middle" font-size="8.5" fill="var(--text-mut)">将 38.4MHz 倍频至所需频点</text>' +
+        '</g>' +
+
+        /* ── Flow Arrow PLL → Tc ── */
+        '<g transform="translate(370,130)">' +
+          '<path d="M 0,0 L 46,0" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-dasharray="6 4">' +
+            '<animate attributeName="stroke-dashoffset" values="20;0" dur="0.8s" begin="0.2s" repeatCount="indefinite"/>' +
+          '</path>' +
+          '<polygon points="40,-5 50,0 40,5" fill="var(--accent)"/>' +
+          '<text x="24" y="-10" text-anchor="middle" font-size="8" fill="var(--text-mut)">导出</text>' +
+        '</g>' +
+
+        /* ── Tc Result Box ── */
+        '<g transform="translate(420,62)">' +
+          '<rect x="0" y="0" width="130" height="140" rx="10" fill="var(--accent-bg)" stroke="var(--accent)" stroke-width="2.2"/>' +
+          '<text x="65" y="28" text-anchor="middle" font-size="12" font-weight="700" fill="var(--accent)" font-family="var(--font-mono)">Tc</text>' +
+          '<text x="65" y="56" text-anchor="middle" font-size="18" font-weight="900" fill="var(--accent)" font-family="var(--font-mono)">≈ 0.509</text>' +
+          '<text x="65" y="78" text-anchor="middle" font-size="11" fill="var(--accent)">ns</text>' +
+          '<text x="65" y="104" text-anchor="middle" font-size="9" fill="var(--text-mut)">NR 原子</text>' +
+          '<text x="65" y="120" text-anchor="middle" font-size="9" fill="var(--text-mut)">时间基准</text>' +
+        '</g>' +
+
+        /* ── Derived params ── */
+        '<g transform="translate(572,62)">' +
+          '<rect x="0" y="0" width="128" height="140" rx="10" fill="var(--surface)" stroke="var(--border)" stroke-width="1.2"/>' +
+          '<text x="64" y="22" text-anchor="middle" font-size="9" font-weight="700" fill="var(--text-main)">Tc 衍生参数</text>' +
+          '<line x1="14" y1="32" x2="114" y2="32" stroke="var(--border)" stroke-width="0.5"/>' +
+
+          '<text x="14" y="52" font-size="8" fill="var(--text-mut)" font-family="var(--font-mono)">TA 步长</text>' +
+          '<text x="14" y="68" font-size="9" fill="var(--text-sec)" font-family="var(--font-mono)">16·Tc ≈ 8.14 ns</text>' +
+
+          '<text x="14" y="88" font-size="8" fill="var(--text-mut)" font-family="var(--font-mono)">OFDM 采样点间距</text>' +
+          '<text x="14" y="104" font-size="9" fill="var(--text-sec)" font-family="var(--font-mono)">= 1 / (Δf·Nf)</text>' +
+
+          '<text x="14" y="124" font-size="8" fill="var(--text-mut)" font-family="var(--font-mono)">CP 保护间隔</text>' +
+        '</g>' +
+
+        /* ── Bottom conclusion callout ── */
+        '<g transform="translate(20,230)">' +
+          '<rect x="0" y="0" width="683" height="52" rx="8" fill="var(--brand-bg)" stroke="var(--brand)" stroke-width="1"/>' +
+          '<rect x="0" y="0" width="4" height="52" rx="2" fill="var(--brand)"/>' +
+          '<text x="345" y="20" text-anchor="middle" font-size="10.5" fill="var(--text-main)" font-weight="600">' +
+            '★ 结论：Tc 衍生出 NR 全部物理层时序 —— OFDM 符号长度 · CP 长度 · TA 提前量 · FFT 采样间距 · 帧结构周期</text>' +
+          '<text x="345" y="38" text-anchor="middle" font-size="9" fill="var(--text-mut)" font-family="var(--font-mono)">' +
+            '空口中 OFDM 符号切割与公里级 TA 补偿，本质是对这颗 38.4MHz 晶振的脉冲计数</text>' +
+        '</g>' +
+
+        /* Pulse ring at TCXO */
+        '<circle cx="98" cy="172" r="10" fill="none" stroke="var(--purple)" stroke-width="1.5" opacity="0.6">' +
+          '<animate attributeName="r" values="10;55" dur="2s" repeatCount="indefinite"/>' +
+          '<animate attributeName="opacity" values="0.5;0" dur="2s" repeatCount="indefinite"/>' +
+        '</circle>' +
+      '</svg>';
+    }
+
+    /* ── Sub-step 1: 协议基因载入 ─────────────────────────────────── */
+    if (subIdx === 1) {
+      var CARD_Y = 68, CARD_H = 175;  /* taller cards */
+
+      return '<svg viewBox="0 0 ' + VW + ' ' + VH + '" width="100%" height="100%" style="display:block;">' +
+        '<text x="360" y="24" text-anchor="middle" font-size="14" font-weight="700" fill="var(--text-main)">先验知识载入 · 芯片内置的 3GPP 标称字典</text>' +
+
+        /* ── Dashed wrapper ── */
+        '<g transform="translate(10,52)">' +
+          '<rect x="0" y="0" width="702" height="195" rx="12" fill="none" stroke="var(--text-mut)" stroke-width="1.2" stroke-dasharray="8 4" opacity="0.5"/>' +
+          '<rect x="16" y="-9" width="210" height="18" rx="4" fill="var(--surface)"/>' +
+          '<text x="24" y="4" font-size="9" fill="var(--text-mut)" font-family="var(--font-mono)" font-weight="600">SOC 内部固化 ROM &amp; USIM 卡 · 出厂即固化</text>' +
+
+        '</g>' +
+
+        /* ── PSS ── */
+        '<g transform="translate(20,' + CARD_Y + ')">' +
+          '<rect x="0" y="0" width="210" height="' + CARD_H + '" rx="10" fill="var(--surface)" stroke="var(--brand)" stroke-width="1.5"/>' +
+          '<rect x="0" y="0" width="210" height="28" rx="10" fill="var(--brand-bg)"/>' +
+          '<rect x="0" y="16" width="210" height="12" fill="var(--brand-bg)"/>' +
+          '<text x="105" y="18" text-anchor="middle" font-size="10" font-weight="700" fill="var(--brand)" font-family="var(--font-mono)">PSS m 序列生成器</text>' +
+          '<text x="105" y="52" text-anchor="middle" font-size="9" fill="var(--text-sec)">特征多项式 · TS 38.211</text>' +
+          '<rect x="16" y="66" width="178" height="34" rx="6" fill="#f8fafc" stroke="var(--border)" stroke-width="0.8"/>' +
+          '<text x="105" y="88" text-anchor="middle" font-size="12" fill="var(--text-main)" font-family="var(--font-mono)" font-weight="600">g(x) = x⁷ + x⁴ + 1</text>' +
+          '<text x="105" y="122" text-anchor="middle" font-size="9" fill="var(--text-mut)">127-bit BPSK 伪随机序列</text>' +
+          '<text x="105" y="142" text-anchor="middle" font-size="9" fill="var(--text-mut)">3 种候选 · N_ID² ∈ {0, 1, 2}</text>' +
+          '<text x="105" y="162" text-anchor="middle" font-size="8.5" fill="var(--text-mut)">位于基带芯片 ROM</text>' +
+        '</g>' +
+
+        /* ── GSCN ── */
+        '<g transform="translate(248,' + CARD_Y + ')">' +
+          '<rect x="0" y="0" width="224" height="' + CARD_H + '" rx="10" fill="var(--surface)" stroke="var(--accent)" stroke-width="1.5"/>' +
+          '<rect x="0" y="0" width="224" height="28" rx="10" fill="var(--accent-bg)"/>' +
+          '<rect x="0" y="16" width="224" height="12" fill="var(--accent-bg)"/>' +
+          '<text x="112" y="18" text-anchor="middle" font-size="10" font-weight="700" fill="var(--accent)" font-family="var(--font-mono)">GSCN 同步栅格字典</text>' +
+          '<text x="112" y="44" text-anchor="middle" font-size="7.5" fill="var(--text-mut)">（仅列举国内常用频段，全球共 300+ 法定格点）</text>' +
+
+          '<g transform="translate(0,48)" font-size="8.5" font-family="var(--font-mono)">' +
+            '<text x="112" y="14" text-anchor="middle" fill="var(--text-mut)">n1  · GSCN 7934  · 2.1 GHz</text>' +
+            '<text x="112" y="34" text-anchor="middle" fill="var(--text-mut)">n41 · GSCN 8396  · 2.5 GHz</text>' +
+            '<text x="112" y="54" text-anchor="middle" fill="var(--text-mut)">n77 · GSCN 8742  · 3.7 GHz</text>' +
+            '<text x="112" y="74" text-anchor="middle" fill="var(--text-mut)">n78 · GSCN 8778  · 3.5 GHz</text>' +
+            '<text x="112" y="94" text-anchor="middle" fill="var(--text-mut)">n79 · GSCN 9072  · 4.7 GHz</text>' +
+            '<text x="112" y="114" text-anchor="middle" fill="var(--text-mut)">n257· GSCN23674 · 28 GHz</text>' +
+          '</g>' +
+        '</g>' +
+
+        /* ── USIM ── */
+        '<g transform="translate(490,' + CARD_Y + ')">' +
+          '<rect x="0" y="0" width="210" height="' + CARD_H + '" rx="10" fill="var(--surface)" stroke="var(--warn)" stroke-width="1.5"/>' +
+          '<rect x="0" y="0" width="210" height="28" rx="10" fill="var(--warn-bg)"/>' +
+          '<rect x="0" y="16" width="210" height="12" fill="var(--warn-bg)"/>' +
+          '<text x="105" y="18" text-anchor="middle" font-size="10" font-weight="700" fill="var(--warn)" font-family="var(--font-mono)">USIM 卡 · 签约信息</text>' +
+
+          '<text x="105" y="56" text-anchor="middle" font-size="9" fill="var(--text-sec)">PLMN 优先级矩阵</text>' +
+          '<text x="105" y="78" text-anchor="middle" font-size="9.5" fill="var(--text-main)" font-family="var(--font-mono)">46000 中国移动</text>' +
+          '<text x="105" y="98" text-anchor="middle" font-size="9.5" fill="var(--text-main)" font-family="var(--font-mono)">46001 中国联通</text>' +
+          '<text x="105" y="118" text-anchor="middle" font-size="9.5" fill="var(--text-main)" font-family="var(--font-mono)">46011 中国电信</text>' +
+          '<line x1="20" y1="132" x2="190" y2="132" stroke="var(--border)" stroke-width="0.5"/>' +
+          '<text x="105" y="150" text-anchor="middle" font-size="8" fill="var(--text-mut)">RF 能力：支持频段列表 (n1~n257)</text>' +
+          '<text x="105" y="166" text-anchor="middle" font-size="8" fill="var(--text-mut)">上次关机前驻留频点 · 快速重搜</text>' +
+        '</g>' +
+
+        /* ── Bottom: 栅格密度可视化对比 ── */
+        '<g transform="translate(20,260)">' +
+
+          /* Canvas */
+          '<rect x="0" y="0" width="680" height="96" rx="10" fill="var(--surface)" stroke="var(--border)" stroke-width="1.2"/>' +
+
+          /* ── Upper half: pure graphics ── */
+          /* Dense channel raster ticks (top) */
+          (function() {
+            var ticks = '';
+            for (var t = 14; t <= 668; t += 4) {
+              ticks += '<line x1="' + t + '" y1="18" x2="' + t + '" y2="34" stroke="#94a3b8" stroke-width="0.7"/>';
+            }
+            return ticks;
+          })() +
+
+          /* Sparse sync raster diamonds (bottom of graphics area) */
+          (function() {
+            var diamonds = '';
+            var pts = [50, 120, 190, 320, 410, 520];
+            for (var i = 0; i < pts.length; i++) {
+              var px = pts[i];
+              diamonds += '<line x1="' + px + '" y1="34" x2="' + px + '" y2="46" stroke="var(--brand)" stroke-width="1" opacity="0.5"/>';
+              diamonds += '<polygon points="' + px + ',46 ' + (px+4) + ',52 ' + px + ',58 ' + (px-4) + ',52" fill="var(--brand)" opacity="0.75"/>';
+              diamonds += '<line x1="' + px + '" y1="52" x2="' + px + '" y2="62" stroke="var(--brand)" stroke-width="0.7" stroke-dasharray="2 2" opacity="0.4"/>';
+            }
+            return diamonds;
+          })() +
+
+          /* ── Lower half: centered labels with equal spacing ── */
+          '<text x="210" y="74" text-anchor="middle" font-size="9" fill="var(--text-mut)" font-family="var(--font-sans)">信道栅格 (15 kHz 步长)</text>' +
+          '<text x="210" y="88" text-anchor="middle" font-size="10" fill="var(--text-main)" font-family="var(--font-mono)" font-weight="700">≈ 33,333 个格点</text>' +
+
+          '<polygon points="290,68 390,68 380,76 390,84 290,84 300,76" fill="var(--warn-bg)" stroke="var(--warn)" stroke-width="1.2"/>' +
+          '<text x="340" y="79" text-anchor="middle" font-size="10" font-weight="900" fill="var(--warn)" font-family="var(--font-mono)">96×</text>' +
+
+          '<text x="470" y="74" text-anchor="middle" font-size="9" fill="var(--accent)" font-family="var(--font-sans)">同步栅格 (1.44 MHz 步长)</text>' +
+          '<text x="470" y="88" text-anchor="middle" font-size="10" fill="var(--accent)" font-family="var(--font-mono)" font-weight="700">仅 347 个 GSCN 锚点</text>' +
+
+          '<text x="340" y="10" text-anchor="middle" font-size="8" fill="var(--text-mut)" font-family="var(--font-sans)">以 n78 频段为例 (3300~3800 MHz, 500 MHz 带宽)</text>' +
+        '</g>' +
+
+        '<text x="690" y="402" text-anchor="end" font-size="10" fill="var(--text-mut)" font-family="var(--font-sans)">▶ 下一步：gNB 广播与 SSB</text>' +
+      '</svg>';
+    }
+
+    return '';
+  };
+
+  Engine.boot({ stageIdx: 0 });
+})();
+</script>
+</body>
+</html>

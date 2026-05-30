@@ -1,0 +1,1285 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Stage 1 · gNB SSB 广播</title>
+<link rel="stylesheet" href="design-system.css">
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['$','$'], ['\\(','\\)']] },
+  options: { skipHtmlTags: ['script','noscript','style','textarea'] }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+<style>
+.nr-slider-wrap { display:flex;align-items:center;gap:8px;font-family:var(--font-mono);font-size:12px; }
+.nr-slider { -webkit-appearance:none;appearance:none;height:5px;border-radius:3px;
+             background:var(--border);outline:none;cursor:pointer;width:130px; }
+.nr-slider::-webkit-slider-thumb { -webkit-appearance:none;width:14px;height:14px;
+  border-radius:50%;background:var(--brand);border:2px solid white;
+  box-shadow:0 1px 4px rgba(29,78,216,.4); }
+.nr-val  { font-family:var(--font-mono);font-size:12px;font-weight:700;
+           color:var(--brand);min-width:36px;text-align:right; }
+.case-btn { padding:4px 10px;border-radius:5px;font-size:11px;font-family:var(--font-mono);
+            font-weight:700;cursor:pointer;border:1.5px solid var(--border);
+            background:var(--surface);color:var(--text-sec);transition:all .15s; }
+.case-btn.on { background:var(--brand);border-color:var(--brand);color:white; }
+.ctrl-bar { display:flex;align-items:center;gap:12px;background:var(--surface);
+            border:1px solid var(--border);border-radius:8px;padding:7px 14px;flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="stage-data.js"></script>
+<script src="engine.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════
+   Stage 1 · gNB SSB · 5 sub-steps (0..4)
+   ═══════════════════════════════════════════════════════════ */
+
+/* ─── Sub 0: 理论黑板 ───────────────────────────────────── */
+function renderS1Discuss() {
+  return `<svg viewBox="0 0 720 495" width="100%" height="100%"
+    style="display:block;"
+    xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="d1" viewBox="0 0 8 8" refX="4" refY="4"
+            markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M1 1L7 4L1 7Z" fill="#1d4ed8"/>
+    </marker>
+  </defs>
+  <rect x="14" y="14" width="692" height="412" rx="14" fill="#f0f6ff" stroke="#c8d6e8" stroke-width="1.5"/>
+  <rect x="14" y="14" width="692" height="44" rx="14" fill="#1d4ed8" opacity=".08"/>
+  <text x="360" y="36" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="13" font-weight="700" fill="#1d4ed8">
+    下行同步的根本难题：UE 开机时对世界一无所知</text>
+
+  <!-- Column 1: TIME -->
+  <rect x="28"  y="72" width="204" height="210" rx="10" fill="white" stroke="#dc2626" stroke-width="1.5"/>
+  <rect x="28"  y="72" width="204" height="36"  rx="10" fill="#dc2626" opacity=".1"/>
+  <text x="130" y="91" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="12" font-weight="700" fill="#7f1d1d">① 时域无知</text>
+  <text x="130" y="118" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="11" fill="#334155">不知道帧头在哪里</text>
+  <rect x="44"  y="130" width="172" height="22" rx="3" fill="#fee2e2"/>
+  <text x="130" y="141" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="9" fill="#7f1d1d">? ## .. ## .. .. .. ## ?</text>
+  <text x="130" y="170" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="10" fill="#475569">10ms 帧，当前在第几个符号？</text>
+  <rect x="56"  y="176" width="148" height="32" rx="6" fill="#fef2f2"/>
+  <text x="130" y="188" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" font-weight="700" fill="#dc2626">解法：PSS/SSS</text>
+  <text x="130" y="202" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="9" fill="#7f1d1d">固定在帧中特定 Symbol</text>
+  <text x="130" y="250" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="10" fill="#475569" font-style="italic">精度: ±1 us</text>
+  <text x="130" y="268" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="10" fill="#475569" font-style="italic">SSS → 反推帧头</text>
+
+  <!-- Column 2: FREQ -->
+  <rect x="258" y="72" width="204" height="210" rx="10" fill="white" stroke="#d97706" stroke-width="1.5"/>
+  <rect x="258" y="72" width="204" height="36"  rx="10" fill="#d97706" opacity=".1"/>
+  <text x="360" y="91" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="12" font-weight="700" fill="#78350f">② 频域无知</text>
+  <text x="360" y="118" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="11" fill="#334155">只知道频段范围</text>
+  <rect x="272" y="130" width="176" height="22" rx="3" fill="#fef3c7"/>
+  <rect x="338" y="130" width="44"  height="22" fill="#d97706" opacity=".5"/>
+  <text x="360" y="141" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="8" fill="#7c3a00">gNB?</text>
+  <text x="360" y="170" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="10" fill="#475569">3.3~3.8 GHz 中精确在哪？</text>
+  <rect x="278" y="176" width="164" height="32" rx="6" fill="#fffbeb"/>
+  <text x="360" y="188" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" font-weight="700" fill="#d97706">解法：GSCN 栅格</text>
+  <text x="360" y="202" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="9" fill="#78350f">347 格点，步长 1.44MHz</text>
+  <text x="360" y="250" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="10" fill="#475569" font-style="italic">搜索空间压缩 96x</text>
+  <text x="360" y="268" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="10" fill="#475569" font-style="italic">搜索时间 &lt; 2s</text>
+
+  <!-- Column 3: SPATIAL -->
+  <rect x="488" y="72" width="210" height="210" rx="10" fill="white" stroke="#7c3aed" stroke-width="1.5"/>
+  <rect x="488" y="72" width="210" height="36"  rx="10" fill="#7c3aed" opacity=".1"/>
+  <text x="593" y="91" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="12" font-weight="700" fill="#4c1d95">③ 空域无知</text>
+  <text x="593" y="118" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="11" fill="#334155">多波束系统：哪个方向有信号？</text>
+  <!-- beam fan -->
+  <line x1="533" y1="216" x2="510" y2="140" stroke="#7c3aed" stroke-width="1.5" opacity=".4"/>
+  <line x1="533" y1="216" x2="525" y2="134" stroke="#7c3aed" stroke-width="1.5" opacity=".65"/>
+  <line x1="533" y1="216" x2="542" y2="132" stroke="#7c3aed" stroke-width="2"   opacity=".9"/>
+  <line x1="533" y1="216" x2="558" y2="136" stroke="#7c3aed" stroke-width="1.5" opacity=".65"/>
+  <line x1="533" y1="216" x2="572" y2="144" stroke="#7c3aed" stroke-width="1.5" opacity=".4"/>
+  <circle cx="533" cy="216" r="6" fill="#7c3aed"/>
+  <text x="533" y="232" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="9" fill="#4c1d95">gNB</text>
+  <rect x="604" y="176" width="88" height="32" rx="6" fill="#f5f3ff"/>
+  <text x="648" y="188" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" font-weight="700" fill="#7c3aed">解法：SSB Burst</text>
+  <text x="648" y="202" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="9" fill="#4c1d95">5ms 轮询所有方向</text>
+  <text x="593" y="252" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="10" fill="#475569" font-style="italic">SSB Index = 隐式方向编码</text>
+  <text x="593" y="268" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="10" fill="#475569" font-style="italic">零信令空间定向</text>
+
+  <!-- Converge -->
+  <line x1="130" y1="282" x2="130" y2="308" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <line x1="360" y1="282" x2="360" y2="308" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <line x1="593" y1="282" x2="593" y2="308" stroke="#94a3b8" stroke-width="1.2" stroke-dasharray="4 3"/>
+  <line x1="130" y1="308" x2="593" y2="308" stroke="#94a3b8" stroke-width="1.2"/>
+  <line x1="360" y1="308" x2="360" y2="328" stroke="#1d4ed8" stroke-width="1.5" marker-end="url(#d1)"/>
+  <rect x="158" y="330" width="404" height="36" rx="8" fill="#1d4ed8" opacity=".07" stroke="#1d4ed8" stroke-width="1"/>
+  <text x="360" y="344" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="11" font-weight="700" fill="#1d4ed8">
+    SSB Burst Set：5ms 半帧内同时解决三个维度问题</text>
+  <text x="360" y="360" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="10" fill="#334155">
+    时域对齐 · 频率锁定 · 空间感知——三位一体</text>
+  <text x="360" y="406" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#475569">
+    点击 [下一步] 进入 SSB Burst 时域仿真</text>
+</svg>`;
+}
+
+/* ─── Sub 1: SSB Burst 时域（Case 切换）───────────────────── */
+var _curCase = 'C';
+var _animBeam = 0, _animPlaying = true, _animTid = null, _animPause = 0;
+var _CASES = {
+  A:{ scs:'15kHz',  lMax:8,  col:'#6366f1',
+      pos:[[0,2],[0,8],[1,2],[1,8],[2,2],[2,8],[3,2],[3,8]] },
+  B:{ scs:'30kHz',  lMax:8,  col:'#8b5cf6',
+      pos:[[0,4],[0,8],[1,4],[1,8],[2,4],[2,8],[3,4],[3,8]] },
+  C:{ scs:'30kHz',  lMax:8,  col:'#1d4ed8',
+      pos:[[0,2],[0,8],[1,2],[1,8],[2,2],[2,8],[3,2],[3,8]] },
+  D:{ scs:'120kHz', lMax:8,  col:'#059669',
+      pos:[[0,4],[1,4],[2,4],[3,4],[4,4],[5,4],[6,4],[7,4]] },
+  E:{ scs:'240kHz', lMax:8,  col:'#dc2626',
+      pos:[[0,8],[1,8],[2,8],[3,8],[4,8],[5,8],[6,8],[7,8]] },
+};
+
+/* ── Case 辅助函数 ─────────────────────────────────────── */
+function _cLmax(c){ return (c==='D'||c==='E')?64:8; }
+function _cCol(c){ return {A:'#6366f1',B:'#0891b2',C:'#2563eb',D:'#059669',E:'#f97316'}[c]||'#2563eb'; }
+function _cScs(c){ return {A:'15kHz',B:'30kHz',C:'30kHz',D:'120kHz',E:'240kHz'}[c]; }
+function _cFr(c){ return (c==='D'||c==='E')?'FR2':'FR1'; }
+
+function _computeSSBPos(c) {
+  if(c==='A') return [[0,2,0],[0,8,1],[1,2,0],[1,8,1],[2,2,0],[2,8,1],[3,2,0],[3,8,1]];
+  if(c==='B') return [[0,4,0],[0,8,1],[1,2,0],[1,6,1],[2,4,0],[2,8,1],[3,2,0],[3,6,1]];
+  if(c==='C') return [[0,2,0],[0,8,1],[1,2,0],[1,8,1],[2,2,0],[2,8,1],[3,2,0],[3,8,1]];
+  // D: {4,8,16,20}+28n n=0..15 | E: {8,12,16,20}+28n n=0..15
+  var base=c==='D'?[4,8,16,20]:[8,12,16,20], pos=[];
+  for(var n=0;n<16;n++){
+    base.forEach(function(s,k){
+      var sym=s+28*n;
+      pos.push([Math.floor(sym/14), sym%14, k<2?0:1]);
+    });
+  }
+  return pos;
+}
+
+function _ssbCenterX(idx) {
+  var nS={A:5,B:10,C:10,D:40,E:80}[_curCase]||40;
+  var sW=664/nS, syW=sW/14, bW=Math.max(2,4*syW);
+  var p=_computeSSBPos(_curCase)[idx];
+  return 28+p[0]*sW+p[1]*syW+bW/2;
+}
+
+/* ── 动画核心 ──────────────────────────────────────────── */
+function _doAnimStep(){
+  var lMax=_cLmax(_curCase), col=_cCol(_curCase);
+  var ct=document.getElementById('cycleTimer');
+
+  // ── 暂停倒计时阶段（模拟 15ms 数据区）──
+  if(_animPause > 0){
+    _animPause--;
+    var totalPause = lMax>8?30:8;  // 30×200ms=6s(FR2) / 8×750ms=6s(FR1)
+    var hand = document.getElementById('cycleHand');
+    // 指针从 3 点(90°) 顺时针 270° 到 12 点(360°)
+    var angle = 90 + 270 * (totalPause - _animPause) / totalPause;
+    if(hand) hand.setAttribute('transform','rotate('+angle.toFixed(1)+' 625 290)');
+    if(_animPause === 0){
+      if(ct) ct.setAttribute('opacity','0');
+      // 正式重启第一个波束
+      _animBeam = 0;
+      _doAnimStep();
+    }
+    return;
+  }
+
+  var cur=_animBeam, dimOp=lMax>8?'0.1':'0.22';
+  for(var i=0;i<lMax;i++){
+    var sb=document.getElementById('ssb-'+i);
+    var bm=document.getElementById('bm-'+i);
+    var bl=document.getElementById('bl-'+i);
+    if(sb) sb.setAttribute('opacity',dimOp);
+    if(bm){ bm.setAttribute('opacity','0.14'); bm.setAttribute('stroke-width','1'); }
+    if(bl) bl.setAttribute('fill','#b0bec5');
+  }
+  var sb=document.getElementById('ssb-'+cur);
+  var bm=document.getElementById('bm-'+cur);
+  var bl=document.getElementById('bl-'+cur);
+  if(sb) sb.setAttribute('opacity','1');
+  if(bm){ bm.setAttribute('opacity','1'); bm.setAttribute('stroke-width',lMax>8?'2':'2.5'); }
+  if(bl) bl.setAttribute('fill',col);
+  if(lMax<=8){
+    var _nS={A:5,B:10,C:10,D:40,E:80}[_curCase]||10;
+    var _sW=664/_nS, _syW=_sW/14, _bW=Math.max(2,4*_syW);
+    var _pos=_computeSSBPos(_curCase);
+    var bx=(_pos[cur]?28+_pos[cur][0]*_sW+_pos[cur][1]*_syW+_bW/2:360).toFixed(1);
+    var cl=document.getElementById('cline');
+    if(cl) cl.setAttribute('d','M '+bx+' 154 C '+bx+' 182 360 200 360 214');
+  }
+  var st=document.getElementById('animSt');
+  if(st) st.textContent='B'+cur+'  /  L_max='+lMax;
+  var dn=document.getElementById('dynNote');
+  if(dn) dn.textContent='当前激活：SSB #'+cur+' / B'+cur+
+    ' · 若 UE 处于此方向 → 将在 PRACH 资源组 #'+cur+' 上发起随机接入';
+
+  // ── 最后一个波束发完，进入暂停 ──
+  _animBeam++;
+  if(_animBeam >= lMax){
+    _animBeam = 0;
+    var totalPause = lMax>8?5:7;
+    _animPause = totalPause;
+    if(ct) ct.setAttribute('opacity','1');
+    var hand = document.getElementById('cycleHand');
+    if(hand) hand.setAttribute('transform','rotate(90 625 290)');
+  }
+}
+
+function _startAnim(){
+  if(_animTid) clearInterval(_animTid);
+  var speed=_cLmax(_curCase)>8?200:750;
+  _animTid=setInterval(function(){ if(_animPlaying) _doAnimStep(); }, speed);
+  _doAnimStep();
+}
+
+function toggleAnim(){
+  _animPlaying=!_animPlaying;
+  var lbl=document.getElementById('playLbl');
+  if(lbl) lbl.textContent=_animPlaying?'暂停':'播放';
+}
+
+function resetAnim(){
+  _animBeam=0; _animPlaying=true;
+  var lbl=document.getElementById('playLbl');
+  if(lbl) lbl.textContent='暂停';
+  _doAnimStep();
+}
+
+function renderSSBBurst(){
+  var lMax=_cLmax(_curCase), col=_cCol(_curCase);
+  var scs=_cScs(_curCase), fr=_cFr(_curCase);
+  var TAB_SUB={A:'15kHz · 基础型',B:'30kHz · 升速型',C:'30kHz · 国内主力 ★',
+               D:'120kHz · mmWave',E:'240kHz · 极速'};
+
+  /* ── Case Tabs ── */
+  var tabs='';
+  ['A','B','C','D','E'].forEach(function(c,i){
+    var tx=14+i*111, cc=_cCol(c), on=(c===_curCase);
+    tabs+='<g onclick="switchCase(\''+c+'\')" style="cursor:pointer;">'+
+      '<rect x="'+tx+'" y="-1" width="104" height="34" rx="7"'+
+      ' fill="'+(on?cc:'white')+'" opacity="'+(on?'0.15':'1')+'"'+
+      ' stroke="'+cc+'" stroke-width="'+(on?'2.2':'1.2')+'"/>'+
+      '<text x="'+(tx+52)+'" y="12" text-anchor="middle" dominant-baseline="central"'+
+      ' font-family="SF Mono,Consolas,monospace" font-size="11"'+
+      ' font-weight="'+(on?'800':'600')+'" fill="'+cc+'">Case '+c+'</text>'+
+      '<text x="'+(tx+52)+'" y="25" text-anchor="middle" dominant-baseline="central"'+
+      ' font-family="SF Mono,Consolas,monospace" font-size="8"'+
+      ' fill="'+(on?cc:'#94a3b8')+'">'+TAB_SUB[c]+'</text>'+
+      '</g>';
+  });
+
+  /* ── 右侧行内信息标签（替换旧 param card）── */
+  var card=
+    '<rect x="572" y="0" width="142" height="32" rx="7"'+
+    ' fill="'+col+'" opacity="0.1" stroke="'+col+'" stroke-width="1.5"/>'+
+    '<text x="643" y="11" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="10.5"'+
+    ' font-weight="700" fill="'+col+'">Case '+_curCase+' · '+scs+' · '+fr+'</text>'+
+    '<text x="643" y="24" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="9" fill="#475569">'+
+    'L_max='+lMax+' · 帧周期 20ms</text>';
+
+  /* ── 时域区（20ms 总览 + 展开指示 + 5ms 详细轴）── */
+  var B5X = 28 + 664/4;  // 5ms 在 20ms 轴上的 x 位置 = 194
+
+  var tl=
+    // 帧周期标注（顶部括号）
+    '<line x1="28" y1="54" x2="692" y2="54" stroke="#b0bec5" stroke-width="0.8"/>'+
+    '<line x1="28"  y1="51" x2="28"  y2="54" stroke="#b0bec5" stroke-width="0.8"/>'+
+    '<line x1="692" y1="51" x2="692" y2="54" stroke="#b0bec5" stroke-width="0.8"/>'+
+    '<text x="360" y="48" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="9.5" fill="#475569">'+
+    '&#8592; 帧周期 20ms &#8594;</text>'+
+    // 20ms 总览条（灰色背景）
+    '<rect x="28" y="60" width="664" height="14" rx="3" fill="#e8edf3"/>'+
+    // Burst Set 区（品牌色）
+    '<rect x="28" y="60" width="'+(B5X-28).toFixed(1)+'" height="14" rx="3"'+
+    ' fill="'+col+'" opacity="0.28"/>'+
+    '<text x="'+((28+B5X)/2).toFixed(1)+'" y="67" text-anchor="middle"'+
+    ' dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="8.5"'+
+    ' fill="'+col+'" font-weight="700">Burst Set · 5ms</text>'+
+    // 数据区
+    '<text x="'+((B5X+692)/2).toFixed(1)+'" y="67" text-anchor="middle"'+
+    ' dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="8.5" fill="#475569">'+
+    '数据区 · 15ms</text>'+
+    // 展开指示（梯形虚线）
+    '<path d="M 28 74 L '+B5X.toFixed(1)+' 74 L 692 96 L 28 96 Z"'+
+    ' fill="'+col+'" opacity="0.04"/>'+
+    '<line x1="28" y1="74" x2="28" y2="96"'+
+    ' stroke="'+col+'" stroke-width="1" stroke-dasharray="4 3" opacity="0.5"/>'+
+    '<line x1="'+B5X.toFixed(1)+'" y1="74" x2="692" y2="96"'+
+    ' stroke="'+col+'" stroke-width="1" stroke-dasharray="4 3" opacity="0.5"/>'+
+    // 5ms 详细轴
+    '<line x1="28" y1="96" x2="692" y2="96" stroke="#94a3b8" stroke-width="1"/>'+
+    [0,1,2,3,4,5].map(function(ms){
+      var x=(28+ms*664/5).toFixed(1);
+      return '<line x1="'+x+'" y1="94" x2="'+x+'" y2="100"'+
+             ' stroke="#64748b" stroke-width="1"/>'+
+             '<text x="'+x+'" y="108" text-anchor="middle" dominant-baseline="central"'+
+             ' font-family="SF Mono,Consolas,monospace" font-size="8.5" fill="#475569">'+
+             ms+'ms</text>';
+    }).join('');
+
+  /* ── SSB 块（slot/symbol 精确位置，y=98~154）── */
+  var _nS={A:5,B:10,C:10,D:40,E:80}[_curCase]||40;
+  var _sW=664/_nS, _syW=_sW/14, _bW=Math.max(2,4*_syW);
+  var _pos=_computeSSBPos(_curCase);
+  var _BY=128, _RH=24;
+  var _ann={
+    A:'15kHz · 5ms=5 slots · 1.00ms/slot · sym{2,8}/slot',
+    B:'30kHz · 5ms=10 slots · 0.50ms/slot · sym{4,8,16,20}',
+    C:'30kHz · 5ms=10 slots · 0.50ms/slot · sym{2,8}/slot',
+    D:'120kHz · 5ms=40 slots · 0.125ms/slot · sym{4,8,16,20}',
+    E:'240kHz · 5ms=80 slots · 0.063ms/slot · sym{8,12,16,20}',
+  };
+  var blocks=
+    '<text x="360" y="123" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="8.5" fill="#475569">'+
+    _ann[_curCase]+'</text>'+
+    '<line x1="28" y1="184" x2="692" y2="184" stroke="#d4dce8" stroke-width="1"/>';
+
+  var _drawN=Math.min(_nS,40);
+  for(var _s=0;_s<=_drawN;_s++){
+    var _gx=(28+_s*_sW).toFixed(1);
+    blocks+='<line x1="'+_gx+'" y1="'+_BY+'" x2="'+_gx+'" y2="184"'+
+      ' stroke="'+(_s%(_nS<=10?1:4)===0?'#c8d6e8':'#d4dce8')+'"'+
+      ' stroke-width="'+(_s%(_nS<=10?1:4)===0?'1':'0.5')+'"/>';
+  }
+  for(var _i=0;_i<_pos.length;_i++){
+    var _p=_pos[_i];
+    var _bx=(28+_p[0]*_sW+_p[1]*_syW).toFixed(1);
+    var _by=_BY+(_p[2]===0?1:_RH+4);
+    var _bcx=(parseFloat(_bx)+_bW/2).toFixed(1);
+    blocks+='<rect id="ssb-'+_i+'" x="'+_bx+'" y="'+_by+'"'+
+      ' width="'+_bW.toFixed(1)+'" height="'+_RH+'" rx="2"'+
+      ' fill="'+col+'" opacity="0.38"/>';
+    if(lMax<=8){
+      blocks+='<text x="'+_bcx+'" y="'+(_by+_RH/2).toFixed(1)+'"'+
+        ' text-anchor="middle" dominant-baseline="central"'+
+        ' font-family="SF Mono,Consolas,monospace"'+
+        ' font-size="'+(_bW>20?9.5:(_bW>12?8:7))+'"'+
+        ' fill="'+col+'" font-weight="700" pointer-events="none">#'+_i+'</text>';
+    }
+  }
+
+  /* ── 时空连线（初始 SSB 0）── */
+  var _ib=(28+_pos[0][0]*_sW+_pos[0][1]*_syW+_bW/2).toFixed(1);
+  var cline=lMax<=8?
+    '<path id="cline" d="M '+_ib+' 184 C '+_ib+' 212 360 230 360 244"'+
+    ' fill="none" stroke="'+col+'" stroke-width="1.5"'+
+    ' stroke-dasharray="5 3" opacity="0.70"/>':'';
+
+  /* ── 分区标签 ── */
+  var secLbl=
+    '<text x="360" y="194" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="10.5"'+
+    ' font-weight="600" fill="#334155">空间辐射 · 波束扫描 (Beam Sweeping)</text>';
+
+  /* ── 天线（base y=214）── */
+  var ANT_X=360, ANT_BASE=244;
+  var ant=
+    '<rect x="353" y="202" width="14" height="10" rx="2" fill="#475569"/>'+
+    '<rect x="349" y="212" width="22" height="30" rx="4" fill="#1e293b"/>'+
+    '<line x1="352" y1="220" x2="370" y2="220" stroke="white" stroke-width="0.8" opacity="0.3"/>'+
+    '<line x1="352" y1="227" x2="370" y2="227" stroke="white" stroke-width="0.8" opacity="0.3"/>'+
+    '<line x1="352" y1="234" x2="370" y2="234" stroke="white" stroke-width="0.8" opacity="0.3"/>'+
+    '<text x="360" y="256" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="9" fill="#475569">gNB</text>';
+
+  /* ── 波束扇形 ── */
+  var BL=lMax<=8?150:130, FH=lMax<=8?65:68;
+  var beams='';
+  for(var j=0;j<lMax;j++){
+    var ang=(lMax<=1)?0:(-FH+j*(2*FH/(lMax-1)));
+    var rad=ang*Math.PI/180;
+    var ex=(ANT_X+BL*Math.sin(rad)).toFixed(1);
+    var ey=(ANT_BASE+BL*Math.cos(rad)).toFixed(1);
+    beams+='<line id="bm-'+j+'" x1="'+ANT_X+'" y1="'+ANT_BASE+'"'+
+      ' x2="'+ex+'" y2="'+ey+'"'+
+      ' stroke="'+col+'" stroke-width="1" opacity="0.30"/>';
+    if(lMax<=8){
+      var sign=ang<0?-1:(ang>0?1:0);
+      var lx=(parseFloat(ex)+sign*12).toFixed(1);
+      var ly=(parseFloat(ey)+(Math.abs(ang)<25?11:2)).toFixed(1);
+      var anch=ang<-15?'end':ang>15?'start':'middle';
+      beams+='<text id="bl-'+j+'" x="'+lx+'" y="'+ly+'"'+
+        ' text-anchor="'+anch+'" dominant-baseline="central"'+
+        ' font-family="SF Mono,Consolas,monospace" font-size="9.5"'+
+        ' fill="#475569">B'+j+'</text>';
+    }
+  }
+
+  /* ── 控制按钮 ── */
+  var CY=414;
+  var ctrls=
+    '<g onclick="toggleAnim()" style="cursor:pointer;">'+
+    '<rect x="278" y="'+CY+'" width="76" height="26" rx="6"'+
+    ' fill="white" stroke="#1d4ed8" stroke-width="1.5"/>'+
+    '<text id="playLbl" x="316" y="'+(CY+13)+'"'+
+    ' text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="11"'+
+    ' fill="#1d4ed8" font-weight="600">暂停</text>'+
+    '</g>'+
+    '<g onclick="resetAnim()" style="cursor:pointer;">'+
+    '<rect x="362" y="'+CY+'" width="76" height="26" rx="6"'+
+    ' fill="white" stroke="#94a3b8" stroke-width="1.5"/>'+
+    '<text x="400" y="'+(CY+13)+'"'+
+    ' text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="11"'+
+    ' fill="#475569" font-weight="600">&#x21BA; 重置</text>'+
+    '</g>'+
+    '<text id="animSt" x="450" y="'+(CY+13)+'"'+
+    ' dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="10"'+
+    ' fill="'+col+'" font-weight="700">B0  /  L_max='+lMax+'</text>'+
+    '<g id="cycleTimer" opacity="0">'+
+    '<text x="625" y="267" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="10"'+
+    ' fill="'+(lMax<=8?'#475569':'#94a3b8')+'">数据区 15ms+</text>'+
+    // 钟表表盘
+    '<circle cx="625" cy="290" r="12" fill="white" stroke="#475569" stroke-width="1.5"/>'+
+    // 12点刻度
+    '<line x1="625" y1="280" x2="625" y2="283" stroke="#475569" stroke-width="1.5"/>'+
+    // 3点刻度
+    '<line x1="635" y1="290" x2="632" y2="290" stroke="#475569" stroke-width="1.5"/>'+
+    // 6点刻度
+    '<line x1="625" y1="300" x2="625" y2="297" stroke="#475569" stroke-width="1.5"/>'+
+    // 9点刻度
+    '<line x1="615" y1="290" x2="618" y2="290" stroke="#475569" stroke-width="1.5"/>'+
+    // 指针（旋转组）
+    '<g id="cycleHand">'+
+    '<line x1="625" y1="290" x2="625" y2="281"'+
+    ' stroke="'+col+'" stroke-width="1.8" stroke-linecap="round"/>'+
+    '</g>'+
+    // 中心圆点
+    '<circle cx="625" cy="290" r="1.8" fill="'+col+'"/>'+
+    '</g>';
+
+  /* ── 底部双行说明栏 ── */
+  var note=
+    '<text x="360" y="461" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="11" fill="#475569">'+
+    '每个 SSB Index 对应一个空间波束，UE 捕获后用对应编号 PRACH 资源回应'+
+    ' &#8594; gNB 据此反推 UE 空间方位</text>'+
+    '<rect id="dynNoteBg" x="19" y="478" width="682" height="10" rx="3"'+
+    ' fill="'+col+'" opacity="0.10"/>'+
+    '<text id="dynNote" x="360" y="483" text-anchor="middle"'+
+    ' dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="9"'+
+    ' fill="'+col+'" font-weight="700">'+
+    '当前激活：SSB #0 / B0'+
+    ' · 若 UE 处于此方向 → 将在 PRACH 资源组 #0 上发起随机接入</text>';
+
+  return '<svg viewBox="0 0 720 495" width="100%" height="100%"'+
+    ' style="display:block;" xmlns="http://www.w3.org/2000/svg">'+
+    tabs+card+tl+blocks+cline+secLbl+ant+beams+ctrls+note+'</svg>';
+}
+
+function switchCase(c) {
+  _curCase = c;
+  _animBeam = 0;
+  _animPlaying = true;
+  Engine.ctxSet('ssb_case', c);
+  Engine.ctxSet('scs_khz', c==='A'?15:(c==='D'?120:(c==='E'?240:30)));
+  var vc = document.getElementById('vizContainer');
+  if (vc) { vc.innerHTML = renderSSBBurst(); _startAnim(); }
+}
+
+/* ─── Sub 2: GSCN / k_SSB 双滑块 ──────────────────────────── */
+var _gscn = 7881, _kssb = 2;
+function calcFcMhz(gscn) {
+  return (3000 + (gscn - 7499) * 1.44).toFixed(2);
+}
+function calcArfcn(fcMhz) {
+  return Math.round(600000 + (fcMhz * 1000 - 3000000) / 5);
+}
+
+function renderFreqCoord() {
+  var fc    = calcFcMhz(_gscn);
+  var arfcn = calcArfcn(parseFloat(fc));
+  var dfOff = 15, kMax = 23;                    // FR1 固定
+  var offKhz = _kssb * dfOff;
+  var isNSA  = (_kssb >= 24);
+  var scs = 30;
+
+  /* ── 漏斗格点 x 坐标（固定 7 个，中间是当前 GSCN）── */
+  var gPts = [90,188,270,360,452,540,630];
+  var selX = gPts[3];
+  /* SEC A · 漏斗 (y=16~138) */
+  var secA =
+    '<text x="360" y="15" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="13" font-weight="800" fill="#0f172a">'+
+    '频域定位&#160;·&#160;GSCN&#160;粗对齐与&#160;k_SSB&#160;细对齐</text>'+
+    '<rect x="28" y="26" width="280" height="22" rx="5" fill="white" stroke="#c8d6e8" stroke-width="1"/>'+
+    '<text x="168" y="37" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="9.5" fill="#334155" font-weight="600">信道栅格 ARFCN · 15kHz 步长 · &gt;30000 频点</text>'+
+    '<rect x="28" y="48" width="664" height="10" rx="2" fill="#e8edf3"/>';
+  for (var ti = 0; ti <= 133; ti++) { var ttx = 28 + ti * 5; if (ttx <= 692) secA += '<line x1="'+ttx+'" y1="48" x2="'+ttx+'" y2="58" stroke="#94a3b8" stroke-width="0.5" opacity="0.35"/>'; }
+  secA +=
+    '<path d="M 28 58 L '+selX+' 92" fill="none" stroke="#1d4ed8" stroke-width="0.8" opacity="0.18"/>'+
+    '<path d="M 692 58 L '+selX+' 92" fill="none" stroke="#1d4ed8" stroke-width="0.8" opacity="0.18"/>'+
+    '<path d="M 28 58 L 692 58 L '+selX+' 92 Z" fill="#1d4ed8" opacity="0.05"/>'+
+    '<rect x="278" y="66" width="148" height="16" rx="8" fill="#1d4ed8" opacity="0.1" stroke="#1d4ed8" stroke-width="1"/>'+
+    '<text x="352" y="74" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="9" fill="#1d4ed8" font-weight="700">搜索空间压缩 96×</text>';
+  gPts.forEach(function(px, i) { var hl = (i === 3); secA += '<polygon points="'+px+',95 '+(px-5)+',85 '+(px+5)+',85" fill="'+(hl?'#1d4ed8':'#94a3b8')+'" opacity="'+(hl?'1':'0.4')+'"/>'; });
+  secA +=
+    '<rect x="28" y="106" width="200" height="18" rx="5" fill="white" stroke="#d97706" stroke-width="1"/>'+
+    '<text x="128" y="115" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="9.5" fill="#78350f">GSCN 同步栅格 · 1.44MHz · 347 点</text>'+
+    '<rect x="280" y="94" width="160" height="46" rx="8" fill="#1d4ed8" opacity="0.07" stroke="#1d4ed8" stroke-width="1.5"/>'+
+    '<text x="360" y="110" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="13" font-weight="800" fill="#1d4ed8">GSCN '+_gscn+'</text>'+
+    '<text x="360" y="128" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="11" fill="#334155" font-weight="600">'+fc+' MHz</text>'+
+    '<rect x="492" y="106" width="200" height="18" rx="5" fill="white" stroke="#c8d6e8" stroke-width="1"/>'+
+    '<text x="592" y="115" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="9.5" fill="#64748b">n78 · 100 MHz · 273 PRB</text>';
+
+  /* SEC B · SSB → Point A (y=148~276) */
+  var B_Y0=147, BWP_Y=B_Y0+18, BWP_H=60, K_PIX=5, SSB_BX=440;
+  var ssbX=isNSA?(SSB_BX+23*K_PIX):(SSB_BX+_kssb*K_PIX), ssbW=80;
+  var ssbCol=isNSA?'#94a3b8':'#1d4ed8';
+  var PA_X=28, PA_Y=BWP_Y+BWP_H+22;
+  var secB=
+    '<rect x="28" y="'+BWP_Y+'" width="664" height="'+BWP_H+'" rx="6" fill="white" stroke="#c8d6e8" stroke-width="1.2"/>'+
+    '<text x="40" y="'+(BWP_Y+9)+'" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="7.5" fill="#94a3b8">CRB 网格（反推）</text>';
+  for(var rb=0;rb<=22;rb++){var rbx2=(28+rb*664/22).toFixed(1);secB+='<line x1="'+rbx2+'" y1="'+(BWP_Y+4)+'" x2="'+rbx2+'" y2="'+(BWP_Y+BWP_H-4)+'" stroke="#d4dce8" stroke-width="'+(rb%4===0?'1.2':'0.5')+'" stroke-dasharray="3 2" opacity="0.5"/>';}
+  secB+=
+    '<line x1="360" y1="'+(BWP_Y-2)+'" x2="360" y2="'+(BWP_Y+BWP_H+14)+'" stroke="#dc2626" stroke-width="1.2" stroke-dasharray="5 3"/>'+
+    '<text x="360" y="'+(BWP_Y-10)+'" text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="10" fill="#dc2626">⚵ 载波物理中心</text>'+
+    '<rect x="'+ssbX+'" y="'+(BWP_Y+8)+'" width="'+ssbW+'" height="'+(BWP_H-16)+'" rx="4" fill="'+ssbCol+'" opacity="0.15"/>'+
+    '<rect x="'+ssbX+'" y="'+(BWP_Y+8)+'" width="'+ssbW+'" height="'+(BWP_H-16)+'" rx="4" fill="none" stroke="'+ssbCol+'" stroke-width="2.5"/>'+
+    '<text x="'+(ssbX+ssbW/2)+'" y="'+(BWP_Y+BWP_H/2-6)+'" text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="10" font-weight="700" fill="'+ssbCol+'">SSB 20PRB</text>'+
+    '<text x="'+(ssbX+ssbW/2)+'" y="'+(BWP_Y+BWP_H/2+8)+'" text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="8" fill="'+ssbCol+'">'+(isNSA?'NSA 仅同步':'UE 唯一已知实体')+'</text>'+
+    '<path d="M 362 '+(BWP_Y+BWP_H/2+10)+' L '+(ssbX-2)+' '+(BWP_Y+BWP_H/2+10)+'" stroke="#7c3aed" stroke-width="1" stroke-dasharray="3 2" fill="none" marker-end="url(#mOff)"/>'+
+    '<text x="'+((362+ssbX)/2)+'" y="'+(BWP_Y+BWP_H/2+4)+'" text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="9.5" fill="#7c3aed">非对称柔性放置</text>'+
+    '<defs><marker id="mOff" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1L7 4L1 7Z" fill="#d97706"/></marker><marker id="mRed" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1L7 4L1 7Z" fill="#dc2626"/></marker></defs>'+
+    '<circle cx="'+PA_X+'" cy="'+PA_Y+'" r="5" fill="#dc2626"/>'+
+    '<text x="'+PA_X+'" y="'+(PA_Y+14)+'" text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="9.5" font-weight="700" fill="#dc2626">Point A</text>'+
+    '<line x1="'+(PA_X+6)+'" y1="'+PA_Y+'" x2="'+(SSB_BX-2)+'" y2="'+PA_Y+'" stroke="#dc2626" stroke-width="1.5" stroke-dasharray="6 3"/>'+
+    '<polygon points="'+SSB_BX+','+PA_Y+' '+(SSB_BX-6)+','+(PA_Y-3)+' '+(SSB_BX-6)+','+(PA_Y+3)+'" fill="#dc2626"/>'+
+    '<text x="'+((PA_X+SSB_BX)/2)+'" y="'+(PA_Y-8)+'" text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="8.5" fill="#475569">OffsetToPointA × 12 × Δf_CRB (RB 级)</text>';
+  if(!isNSA&&_kssb>0){secB+='<line x1="'+ssbX+'" y1="'+(BWP_Y+8+BWP_H-16)+'" x2="'+ssbX+'" y2="'+(PA_Y+4)+'" stroke="#d97706" stroke-width="1" stroke-dasharray="4 3" opacity="0.6"/>'+
+    '<line x1="'+SSB_BX+'" y1="'+PA_Y+'" x2="'+(ssbX-1)+'" y2="'+PA_Y+'" stroke="#d97706" stroke-width="2.5"/>'+
+    '<text x="'+((PA_X+SSB_BX)/2+275)+'" y="'+(PA_Y-8)+'" text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="8" fill="#d97706">k_SSB·Δf_offset (RE 级)</text>';}
+  /* SEC C · 游标尺双网格 */
+  var C_Y0=PA_Y+20,N_SC=12,SC_W=664/N_SC;
+  var kssbMod=(_kssb*dfOff/scs*SC_W)%SC_W;
+  var isMis=!isNSA&&kssbMod>1&&kssbMod<SC_W-1;
+  var CRB_Y=C_Y0+30,VZ_Y=CRB_Y+36,SSB_Y2=VZ_Y+52;
+  var secC=
+    '<rect x="28" y="'+C_Y0+'" width="664" height="22" rx="5" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.2"/>'+
+    '<text x="416" y="'+(C_Y0+11)+'" text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="9" font-weight="700" fill="#4c1d95">CRB(Δf_CRB='+scs+'kHz) vs. SSB(Δf_SSB='+scs+'kHz) vs. k_SSB 游标尺 (Δf_offset='+dfOff+'kHz 强制锁定)</text>'+
+    '<rect x="28" y="'+CRB_Y+'" width="664" height="32" rx="3" fill="#f8fafc" stroke="#c8d6e8" stroke-width="1"/>';
+  for(var i3=0;i3<=N_SC;i3++){var cx3=(28+i3*SC_W).toFixed(1);secC+='<line x1="'+cx3+'" y1="'+CRB_Y+'" x2="'+cx3+'" y2="'+(CRB_Y+32)+'" stroke="#94a3b8" stroke-width="'+(i3%4===0?'2':'1')+'"/>';}
+  secC+='<text x="32" y="'+(CRB_Y+16)+'" text-anchor="start" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="8.5" fill="#334155" font-weight="600">CRB 数据网格</text>'+
+    '<line x1="28" y1="'+(CRB_Y+38)+'" x2="'+(28+SC_W).toFixed(1)+'" y2="'+(CRB_Y+38)+'" stroke="#94a3b8" stroke-width="1" marker-end="url(#mOff)"/>'+
+    '<text x="'+(28+SC_W/2).toFixed(1)+'" y="'+(CRB_Y+46)+'" text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="8" fill="#94a3b8">'+scs+'kHz</text>';
+
+  /* VERNIER ZOOM STRIP */
+  var VZ_W=SC_W*2.8;
+  secC+='<rect x="28" y="'+VZ_Y+'" width="'+VZ_W.toFixed(1)+'" height="48" rx="4" fill="'+(isMis?'#fef2f2':'#f0fdf4')+'" stroke="'+(isMis?'#dc2626':'#059669')+'" stroke-width="1.5" stroke-dasharray="5 3"/>'+
+    '<text x="'+(28+VZ_W/2).toFixed(1)+'" y="'+(VZ_Y+24)+'" text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="8" fill="#94a3b8">游标放大区</text>'+
+    '<line x1="28" y1="'+(VZ_Y+6)+'" x2="28" y2="'+(VZ_Y+42)+'" stroke="#64748b" stroke-width="2.5"/>';
+  var sbLine=(28+kssbMod).toFixed(1);
+  if(!isNSA){
+    secC+='<line x1="'+sbLine+'" y1="'+(VZ_Y+6)+'" x2="'+sbLine+'" y2="'+(VZ_Y+42)+'" stroke="'+(isMis?'#dc2626':'#059669')+'" stroke-width="2.5">';
+    if(isMis)secC+='<animate attributeName="opacity" values="1;0.2;1" dur="1s" repeatCount="indefinite"/>';
+    secC+='</line>';
+    if(_kssb>0){
+    }
+    if(isMis){
+      secC+='<text x="'+(28+VZ_W+10).toFixed(1)+'" y="'+(VZ_Y+14)+'" text-anchor="start" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="8.5" fill="#dc2626" font-weight="700">⚠ 半齿轮错位</text>'+
+        '<text x="'+(28+VZ_W+10).toFixed(1)+'" y="'+(VZ_Y+30)+'" text-anchor="start" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="8" fill="#7f1d1d">需 k_SSB 相位补偿 → 子载波恢复正交</text>';
+    }else if(_kssb===0){
+      secC+='<text x="'+(28+VZ_W+10).toFixed(1)+'" y="'+(VZ_Y+24)+'" text-anchor="start" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="9" fill="#059669" font-weight="700">k_SSB=0 · 无偏移 · 完美对齐 ✓</text>';
+    }else{
+      secC+='<text x="'+(28+VZ_W+10).toFixed(1)+'" y="'+(VZ_Y+24)+'" text-anchor="start" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="9" fill="#059669" font-weight="700">✓ 整数倍对齐('+offKhz+'kHz = '+(offKhz/scs)+' × '+scs+'kHz)</text>';
+    }
+  }
+  secC+='<rect x="28" y="'+SSB_Y2+'" width="664" height="32" rx="3" fill="#fafaff" stroke="#7c3aed" stroke-width="1"/>';
+  for(var i4=-1;i4<=N_SC+1;i4++){var sx4=(28+i4*SC_W+kssbMod).toFixed(1);if(parseFloat(sx4)>=28&&parseFloat(sx4)<=692){secC+='<line x1="'+sx4+'" y1="'+SSB_Y2+'" x2="'+sx4+'" y2="'+(SSB_Y2+32)+'" stroke="#7c3aed" stroke-width="'+(i4%4===0?'2':'1')+'" opacity="0.65"/>';}}
+  secC+='<text x="32" y="'+(SSB_Y2+16)+'" text-anchor="start" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="8.5" fill="#7c3aed" font-weight="600">SSB 同步网格</text>';
+  var KEY_Y=SSB_Y2+38;
+  secC+='<rect x="28" y="'+KEY_Y+'" width="664" height="18" rx="4" fill="#f5f3ff"/>'+
+    '<text x="360" y="'+(KEY_Y+9)+'" text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="9" fill="#4c1d95" font-weight="600">* FR1 k_SSB 步长永远锁定 15kHz —— 无论实际SCS 是 15/30/60kHz · k_SSB ∈ {0,1,..,23}</text>';
+
+  /* NSA 彩蛋 */
+  var NSA_Y=KEY_Y+26;
+  var nsaZone=isNSA?
+    '<rect x="28" y="'+NSA_Y+'" width="664" height="72" rx="8" fill="#fef2f2" stroke="#dc2626" stroke-width="2"/>'+
+    '<rect x="28" y="'+NSA_Y+'" width="664" height="24" rx="8" fill="#dc2626" opacity="0.1"/>'+
+    '<text x="360" y="'+(NSA_Y+12)+'" text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="11" font-weight="800" fill="#dc2626">⚠ [协议壁垒：无 SIB1] k_SSB = '+_kssb+' ≥ 24（5bit 预留区）</text>'+
+    '<text x="44" y="'+(NSA_Y+38)+'" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="8.5" fill="#7f1d1d">TS 38.213: "no control resource set for Type0-PDCCH common search space is present"</text>'+
+    '<text x="44" y="'+(NSA_Y+56)+'" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="9" fill="#dc2626" font-weight="700">→ UE 立即停止搜网 · 该 SSB 仅供 NSA 辅站同步，无法提供 5G 独立驻留！</text>'
+  :
+    '<rect x="28" y="'+NSA_Y+'" width="664" height="22" rx="6" fill="#f0fdf4" stroke="#059669" stroke-width="1"/>'+
+    '<text x="360" y="'+(NSA_Y+11)+'" text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="9" fill="#065f46">k_SSB = '+_kssb+' ∈ [0, 23] · SA 正常驻留 ✓ · 将滑块拖至 ≥24 查看 NSA 协议壁垒</text>';
+
+  var SVG_H = isNSA ? (NSA_Y + 84) : (NSA_Y + 34);
+  return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:20px;">'+
+    '<div class="ctrl-bar"><div class="nr-slider-wrap"><span style="color:var(--text-mut)">GSCN</span>'+
+    '<input class="nr-slider" type="range" min="7708" max="8054" value="'+_gscn+'" step="3" oninput="updateFreq(+this.value,'+_kssb+')"><span class="nr-val" id="gscnVal">'+_gscn+'</span></div>'+
+    '<div class="nr-slider-wrap" style="margin-left:12px;"><span style="color:var(--text-mut)">k_SSB</span>'+
+    '<input class="nr-slider" type="range" min="0" max="31" value="'+_kssb+'" step="1" style="width:180px;" oninput="updateFreq('+_gscn+',+this.value)"><span class="nr-val" id="kssbVal">'+_kssb+'</span>'+
+    (isNSA?'<span style="margin-left:6px;color:#dc2626;font-size:10px;font-family:var(--font-mono);font-weight:700;">NSA 区间 [24,31]</span>':'<span style="margin-left:6px;color:var(--text-mut);font-size:10px;font-family:var(--font-mono);">SA 区间 [0,23]</span>')+'</div></div>'+
+    '<svg viewBox="0 0 720 '+SVG_H+'" width="100%" height="100%" style="display:block;flex:1;min-height:0;" xmlns="http://www.w3.org/2000/svg">'+secA+secB+secC+nsaZone+'</svg></div>';
+}
+
+
+function updateFreq(g, k) {
+  _gscn = g; _kssb = k;
+  Engine.ctxSet('gscn', g);
+  Engine.ctxSet('arfcn', calcArfcn(parseFloat(calcFcMhz(g))));
+  Engine.ctxSet('kssb', k);
+  var vc = document.getElementById('vizContainer');
+  if (vc) vc.innerHTML = renderFreqCoord();
+}
+
+/* ─── Sub 3: SSB 时频网格（PCI 联动 DMRS）────────────────── */
+var _nid1 = 112, _nid2 = 1;
+var _pciStep = 3;
+var _GX=28,_GY=29,_GW=370,_SYMW=92.5,_GH=224,_SCRH=224/240;
+var _ZPX=412,_ZPY=29,_ZPSW=66,_ZPSH=19;
+var _autoStepTid=null;
+var _mibStep = 0;
+var _mibScan = false;
+function _classRE(sym,sc){
+  if(sym===0) return (sc>=56&&sc<=182)?'pss':'empty';
+  if(sym===2){
+    if(sc>=48&&sc<=55)   return 'guard';
+    if(sc>=56&&sc<=182)  return 'sss';
+    if(sc>=183&&sc<=191) return 'guard';
+  }
+  return 'pbch';
+}
+
+function setPciStep(step){
+  _pciStep=step;
+  var svg=document.getElementById('ssbSvg');
+  if(!svg) return;
+  var cls=svg.getAttribute('class').replace(/\bstep\d\b/g,'').trim()+' step'+step;
+  svg.setAttribute('class',cls);
+  for(var i=0;i<4;i++){
+    var bg=document.getElementById('sBg'+i);
+    var bd=document.getElementById('sBd'+i);
+    if(bg) bg.setAttribute('opacity',i===step?'1':'0');
+    if(bd) bd.setAttribute('stroke-width',i===step?'2.5':'1.2');
+  }
+}
+
+function _runAutoSteps(){
+  if(_autoStepTid){ clearInterval(_autoStepTid); _autoStepTid=null; }
+  var s=0; setPciStep(0);
+  _autoStepTid=Engine.addTimer(setInterval(function(){
+    s++; if(s<=3){ setPciStep(s); } else { clearInterval(_autoStepTid); _autoStepTid=null; }
+  },1200));
+}
+
+function renderSSBGrid(){
+  var pci=3*_nid1+_nid2, v=pci%4;
+  var F={pss:'#ef4444',sss:'#7c3aed',pbch:'#dbeafe',guard:'#d4dce8',empty:'#f1f5f9'};
+  var O={pss:'0.88',sss:'0.88',pbch:'0.40',guard:'0.55',empty:'0.12'};
+
+  /* ── CSS ── */
+  var css='<style>'+
+    '.gre{transition:opacity 0.3s;}'+
+    '.zre{transition:opacity 0.3s;}'+
+    '#ssbSvg.v0 .re-pbch[data-vb="0"]{fill:#f97316!important;opacity:0.92!important;}'+
+    '#ssbSvg.v1 .re-pbch[data-vb="1"]{fill:#f97316!important;opacity:0.92!important;}'+
+    '#ssbSvg.v2 .re-pbch[data-vb="2"]{fill:#f97316!important;opacity:0.92!important;}'+
+    '#ssbSvg.v3 .re-pbch[data-vb="3"]{fill:#f97316!important;opacity:0.92!important;}'+
+    '#ssbSvg.v0 .zre[data-type="pbch"][data-vb="0"]{fill:#f97316!important;opacity:0.95!important;}'+
+    '#ssbSvg.v1 .zre[data-type="pbch"][data-vb="1"]{fill:#f97316!important;opacity:0.95!important;}'+
+    '#ssbSvg.v2 .zre[data-type="pbch"][data-vb="2"]{fill:#f97316!important;opacity:0.95!important;}'+
+    '#ssbSvg.v3 .zre[data-type="pbch"][data-vb="3"]{fill:#f97316!important;opacity:0.95!important;}'+
+    '#ssbSvg.step0 .gre:not([data-type="pss"]){opacity:0.05!important;}'+
+    '#ssbSvg.step1 .gre:not([data-type="sss"]){opacity:0.05!important;}'+
+    '#ssbSvg.step2 .gre:not([data-type="pss"]):not([data-type="sss"]){opacity:0.05!important;}'+
+    '#ssbSvg.step0 .gre[data-type="pss"],'+
+    '#ssbSvg.step1 .gre[data-type="sss"],'+
+    '#ssbSvg.step2 .gre[data-type="pss"],#ssbSvg.step2 .gre[data-type="sss"]{opacity:0.88!important;}'+
+    '</style>';
+
+  /* ── 960 static cells (X=sym, Y=freq) ── */
+  var cells='';
+  for(var sym=0;sym<4;sym++){
+    for(var sc=0;sc<240;sc++){
+      var t=_classRE(sym,sc);
+      var cx=(_GX+sym*_SYMW).toFixed(2);
+      var cy=(_GY+(239-sc)*_SCRH).toFixed(2);
+      cells+='<rect class="gre re-'+t+'" data-vb="'+(sc%4)+'" data-type="'+t+'"'+
+        ' x="'+cx+'" y="'+cy+'" width="'+(_SYMW-0.3).toFixed(2)+'" height="'+(_SCRH+0.1).toFixed(2)+'"'+
+        ' fill="'+F[t]+'" opacity="'+O[t]+'"/>';
+    }
+  }
+
+  /* ── Grid lines ── */
+  var lines='';
+  // Vertical: symbol boundaries
+  for(var sl=0;sl<=4;sl++){
+    var lx=(_GX+sl*_SYMW).toFixed(1);
+    lines+='<line x1="'+lx+'" y1="'+_GY+'" x2="'+lx+'" y2="'+(_GY+_GH)+'"'+
+      ' stroke="#c8d6e8" stroke-width="'+(sl===0||sl===4?'1.5':'1')+'"/>';
+  }
+  // Horizontal: RB boundaries
+  for(var rl=0;rl<=20;rl++){
+    var ly=(_GY+(240-rl*12)*_SCRH).toFixed(1);
+    lines+='<line x1="'+_GX+'" y1="'+ly+'" x2="'+(_GX+_GW)+'" y2="'+ly+'"'+
+      ' stroke="#c8d6e8" stroke-width="'+(rl%5===0?'1.2':'0.4')+'"/>';
+  }
+
+  /* ── Axis labels ── */
+  var axLabels='';
+  // X: symbol labels (top)
+  ['Sym 0','Sym 1','Sym 2','Sym 3'].forEach(function(s,i){
+    axLabels+='<text x="'+(_GX+(i+0.5)*_SYMW).toFixed(1)+'" y="21"'+
+      ' text-anchor="middle" dominant-baseline="central"'+
+      ' font-family="SF Mono,Consolas,monospace" font-size="11" fill="#0f172a">'+s+'</text>';
+  });
+  // Y: RB labels (left)
+  for(var ri=0;ri<=20;ri+=4){
+    var rly=(_GY+(240-ri*12-6)*_SCRH).toFixed(1);
+    axLabels+='<text x="'+(_GX-4)+'" y="'+rly+'"'+
+      ' text-anchor="end" dominant-baseline="central"'+
+      ' font-family="SF Mono,Consolas,monospace" font-size="10" fill="#0f172a">RB'+ri+'</text>';
+  }
+
+  /* ── PRB#0 highlight box ── */
+  var prb0y=(_GY+(239-11)*_SCRH).toFixed(1);
+  var prb0h=(12*_SCRH+1).toFixed(1);
+  var prb0Box=
+    '<rect x="'+_GX+'" y="'+prb0y+'" width="'+_GW+'" height="'+prb0h+'"'+
+    ' fill="none" stroke="#1d4ed8" stroke-width="1.5" stroke-dasharray="5 3" rx="1"/>'+
+    '<text x="'+(_GX+7)+'" y="'+(parseFloat(prb0y)-3)+'"'+
+    ' text-anchor="start" dominant-baseline="auto"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="10.5" fill="#1d4ed8" font-weight="700">PRB#0</text>';
+
+  /* ── Zoom panel (PRB#0 zoomed, sc=0~11) ── */
+  var ZPW=_ZPSW*4, ZPH=_ZPSH*12;
+  var zLines='';
+  for(var zr=0;zr<=12;zr++){
+    var zly=(_ZPY+zr*_ZPSH).toFixed(1);
+    zLines+='<line x1="'+_ZPX+'" y1="'+zly+'" x2="'+(_ZPX+ZPW)+'" y2="'+zly+'"'+
+      ' stroke="#c8d6e8" stroke-width="'+(zr===0||zr===12?'1.5':'0.6')+'"/>';
+  }
+  for(var zs=0;zs<=4;zs++){
+    var zsx=(_ZPX+zs*_ZPSW).toFixed(1);
+    zLines+='<line x1="'+zsx+'" y1="'+_ZPY+'" x2="'+zsx+'" y2="'+(_ZPY+ZPH)+'"'+
+      ' stroke="#c8d6e8" stroke-width="'+(zs===0||zs===4?'1.5':'1')+'"/>';
+  }
+  // Sym labels (top)
+  var zAxL='';
+  ['S0','S1','S2','S3'].forEach(function(s,i){
+    zAxL+='<text x="'+(_ZPX+(i+0.5)*_ZPSW).toFixed(1)+'" y="'+(_ZPY-7)+'"'+
+      ' text-anchor="middle" dominant-baseline="central"'+
+      ' font-family="SF Mono,Consolas,monospace" font-size="10" fill="#0f172a">'+s+'</text>';
+  });
+  // SC labels (right side, sc=0 at bottom)
+  for(var zk=0;zk<12;zk++){
+    var zky=(_ZPY+(11-zk)*_ZPSH+_ZPSH/2).toFixed(1);
+    zAxL+='<text x="'+(_ZPX+ZPW+4)+'" y="'+zky+'"'+
+      ' dominant-baseline="central"'+
+      ' font-family="SF Mono,Consolas,monospace" font-size="9.5" fill="#0f172a">'+zk+'</text>';
+  }
+  // Zoom cells
+  var zCells='';
+  for(var zs2=0;zs2<4;zs2++){
+    for(var zk2=0;zk2<12;zk2++){
+      var zt=_classRE(zs2,zk2);
+      var zbx=(_ZPX+zs2*_ZPSW).toFixed(1);
+      var zby=(_ZPY+(11-zk2)*_ZPSH).toFixed(1);
+      var zop=zt==='empty'?'0.10':zt==='guard'?'0.45':'0.68';
+      zCells+='<rect class="zre" data-vb="'+(zk2%4)+'" data-type="'+zt+'"'+
+        ' x="'+zbx+'" y="'+zby+'" width="'+(_ZPSW-1)+'" height="'+(_ZPSH-1)+'" rx="2"'+
+        ' fill="'+F[zt]+'" opacity="'+zop+'"/>';
+      // DMRS "D" label
+      if(zt==='pbch'){
+        zCells+='<text class="zdl" data-vb="'+(zk2%4)+'"'+
+          ' x="'+(parseFloat(zbx)+_ZPSW/2).toFixed(1)+'"'+
+          ' y="'+(parseFloat(zby)+_ZPSH/2).toFixed(1)+'"'+
+          ' text-anchor="middle" dominant-baseline="central"'+
+          ' font-family="SF Mono,Consolas,monospace" font-size="11" font-weight="700"'+
+          ' fill="#c2410c" opacity="0">D</text>';
+      }
+    }
+  }
+  var dmrsCSS2=
+    '#ssbSvg.v0 .zdl[data-vb="0"]{opacity:1;}'+
+    '#ssbSvg.v1 .zdl[data-vb="1"]{opacity:1;}'+
+    '#ssbSvg.v2 .zdl[data-vb="2"]{opacity:1;}'+
+    '#ssbSvg.v3 .zdl[data-vb="3"]{opacity:1;}';
+  css=css.replace('</style>',dmrsCSS2+'</style>');
+
+  var zoomPanel=
+    '<rect x="'+(_ZPX-4)+'" y="'+(_ZPY-16)+'" width="'+(ZPW+30)+'" height="'+(ZPH+22)+'" rx="8"'+
+    ' fill="#f8fafc" stroke="#c8d6e8" stroke-width="1.5"/>'+
+    '<text x="'+(_ZPX+ZPW/2)+'" y="'+(_ZPY-24)+'" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="11" fill="#64748b" font-weight="600">'+
+    '&#128269; PRB#0 放大镜 (SC 0~11 · ×10)</text>'+
+    zLines+zAxL+zCells;
+
+  /* ── Top info bar ── */
+  var topBars=
+    '<rect x="28" y="-57" width="370" height="26" rx="6" fill="white" stroke="#c8d6e8" stroke-width="1"/>'+
+    '<text x="38" y="-44" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="9.5" fill="#64748b">PCI =</text>'+
+    '<text x="68" y="-44" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="9.5" fill="#64748b" id="pciEq">'+
+    '3&#215;'+_nid1+'+'+_nid2+'</text>'+
+    '<text x="148" y="-44" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="11" fill="#1d4ed8"'+
+    ' font-weight="900" id="pciV">=&#160;'+pci+'</text>'+
+    '<text x="196" y="-44" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="9.5" fill="#64748b">&#160;&#8594; v = PCI mod 4 =</text>'+
+    '<text x="340" y="-44" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="14" fill="#f97316"'+
+    ' font-weight="900" id="vV">'+v+'</text>'+
+    '<rect x="412" y="-57" width="296" height="26" rx="6" fill="#fff7ed" stroke="#f97316" stroke-width="1.5"/>'+
+    '<text x="422" y="-44" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="9.5" fill="#c2410c" font-weight="700">DM-RS 偏移量 =</text>'+
+    '<text x="530" y="-44" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="14" fill="#f97316"'+
+    ' font-weight="900" id="dmrsFml">'+v+'</text>'+
+    '<text x="548" y="-44" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="9.5" fill="#c2410c">'+
+    '&#160;(k mod 4 = '+v+' 的子载波)</text>';
+
+  /* ── Legend ── */
+  var LEG_Y=_GY+_GH-3;
+  var legItems=[
+    {c:'#ef4444',l:'PSS (127 RE)'},{c:'#7c3aed',l:'SSS (127 RE)'},
+    {c:'#dbeafe',s:'#93c5fd',l:'PBCH (576 RE)'},
+    {c:'#f97316',l:'DM-RS (144 RE)'},{c:'#d4dce8',l:'Guard (17 RE)'},
+  ];
+  var leg='';
+  legItems.forEach(function(li,i){
+    var lx=_GX+i*74;
+    leg+='<rect x="'+lx+'" y="'+LEG_Y+'" width="10" height="10" rx="2"'+
+      ' fill="'+li.c+'" stroke="'+(li.s||li.c)+'" stroke-width="0.8" opacity="0.9"/>'+
+      '<text x="'+(lx+13)+'" y="'+(LEG_Y+5)+'" dominant-baseline="central"'+
+      ' font-family="SF Mono,Consolas,monospace" font-size="8" fill="#334155">'+li.l+'</text>';
+  });
+
+  /* ── Step Cards ── */
+  var CARD_Y=LEG_Y+22;
+  var stepDefs=[
+    {c:'#ef4444',bg:'#fef2f2',n:'① PSS 检测',
+     d:'Symbol 0 · SC 56~182 · 127 RE',
+     d2:'盲检 3 种 PSS → N_ID² ∈ {0,1,2} + 符号边界'},
+    {c:'#7c3aed',bg:'#f5f3ff',n:'② SSS 解析',
+     d:'Symbol 2 · SC 56~182 · 127 RE',
+     d2:'336 种 SSS → N_ID¹ ∈ {0~335} + 帧同步'},
+    {c:'#1d4ed8',bg:'#eff6ff',n:'③ PCI 合成',
+     d:'PCI = 3&#215;'+_nid1+'+'+_nid2+' = '+pci,
+     d2:'共 1008 种 · 小区唯一物理层标识'},
+    {c:'#f97316',bg:'#fff7ed',n:'④ DMRS 解调',
+     d:'v = '+pci+' mod 4 = '+v+' · 144 RE',
+     d2:'频偏确定 → 信道估计 → MIB 就绪'},
+  ];
+  var cw=(702-28-3*8)/4;
+  var cards='';
+  stepDefs.forEach(function(sd,i){
+    var cx2=(28+i*(cw+8)).toFixed(1);
+    var isAct=(i===_pciStep);
+    cards+=
+      '<g onclick="setPciStep('+i+')" style="cursor:pointer;">'+
+      '<rect id="sBg'+i+'" x="'+cx2+'" y="'+CARD_Y+'" width="'+cw.toFixed(1)+'" height="64" rx="7"'+
+      ' fill="'+sd.bg+'" opacity="'+(isAct?'1':'0')+'"/>'+
+      '<rect id="sBd'+i+'" x="'+cx2+'" y="'+CARD_Y+'" width="'+cw.toFixed(1)+'" height="64" rx="7"'+
+      ' fill="none" stroke="'+sd.c+'" stroke-width="'+(isAct?'2.5':'1.2')+'"/>'+
+      '<text x="'+(parseFloat(cx2)+cw/2).toFixed(1)+'" y="'+(CARD_Y+16)+'"'+
+      ' text-anchor="middle" dominant-baseline="central"'+
+      ' font-family="SF Mono,Consolas,monospace" font-size="11" font-weight="700" fill="'+sd.c+'">'+sd.n+'</text>'+
+      '<text x="'+(parseFloat(cx2)+cw/2).toFixed(1)+'" y="'+(CARD_Y+33)+'"'+
+      ' text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace"'+
+      ' font-size="8.5" fill="#334155">'+sd.d+'</text>'+
+      '<text x="'+(parseFloat(cx2)+cw/2).toFixed(1)+'" y="'+(CARD_Y+50)+'"'+
+      ' text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace"'+
+      ' font-size="8" fill="#64748b">'+sd.d2+'</text>'+
+      '</g>';
+  });
+
+  var SVG_H=CARD_Y+76;
+  return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;gap:6px;padding-top:50px;">'+
+    '<div class="ctrl-bar" style="gap:6px;margin-bottom:-70px;position:relative;z-index:1;">'+
+      '<div class="nr-slider-wrap">'+
+        '<span style="color:var(--text-mut);font-size:11px;">N_ID&#185;</span>'+
+        '<input id="n1r" class="nr-slider" type="range" min="0" max="335" value="'+_nid1+'" step="1"'+
+        ' oninput="updateGrid(+this.value,+document.getElementById(\'n2r\').value)">'+
+        '<input id="n1inp" type="number" min="0" max="335" value="'+_nid1+'"'+
+        ' style="width:46px;padding:2px 4px;border:1.5px solid var(--border);border-radius:5px;'+
+        'font-family:var(--font-mono);font-size:11px;text-align:center;color:var(--brand);font-weight:700;"'+
+        ' oninput="updateGrid(Math.min(335,Math.max(0,+this.value)),+document.getElementById(\'n2r\').value)">'+
+      '</div>'+
+      '<div class="nr-slider-wrap" style="margin-left:10px;">'+
+        '<span style="color:var(--text-mut);font-size:11px;">N_ID&#178;</span>'+
+        '<input id="n2r" class="nr-slider" type="range" min="0" max="2" value="'+_nid2+'" step="1"'+
+        ' oninput="updateGrid(+document.getElementById(\'n1r\').value,+this.value)">'+
+        '<input id="n2inp" type="number" min="0" max="2" value="'+_nid2+'"'+
+        ' style="width:38px;padding:2px 4px;border:1.5px solid var(--border);border-radius:5px;'+
+        'font-family:var(--font-mono);font-size:11px;text-align:center;color:var(--brand);font-weight:700;"'+
+        ' oninput="updateGrid(+document.getElementById(\'n1r\').value,Math.min(2,Math.max(0,+this.value)))">'+
+      '</div>'+
+    '</div>'+
+    '<svg id="ssbSvg" class="step'+_pciStep+' v'+v+'"'+
+    ' viewBox="0 -67 720 '+SVG_H+'"'+
+    ' width="100%" height="100%" style="display:block;flex:1;min-height:0;" xmlns="http://www.w3.org/2000/svg">'+
+    css+'<g transform="translate(0,-30)">'+cells+lines+axLabels+prb0Box+'</g>'+topBars+'<g transform="translate(0,-20)">'+zoomPanel+leg+cards+'</g>'+
+    '</svg></div>';
+}
+
+function updateGrid(n1,n2){
+  n1=Math.min(335,Math.max(0,n1||0));
+  n2=Math.min(2,Math.max(0,n2||0));
+  _nid1=n1; _nid2=n2;
+  var pci=3*n1+n2, v=pci%4;
+  // Sync all inputs
+  var r1=document.getElementById('n1r'); if(r1) r1.value=n1;
+  var i1=document.getElementById('n1inp'); if(i1) i1.value=n1;
+  var r2=document.getElementById('n2r'); if(r2) r2.value=n2;
+  var i2=document.getElementById('n2inp'); if(i2) i2.value=n2;
+  // Text updates
+  function u(id,val){var e=document.getElementById(id);if(e)e.textContent=val;}
+  u('pciEq','3×'+n1+'+'+n2);
+  u('pciV','= '+pci);
+  u('vV',v);
+  u('dmrsFml',v);
+  var dm2=document.getElementById('dmrsFml');
+  if(dm2) dm2.nextSibling; // handled above
+  // update "k mod 4 = v" text node next to dmrsFml
+  var knode=document.getElementById('dmrsKtxt');
+  if(knode) knode.textContent=' (k mod 4 = '+v+' 的子载波)';
+  // Card 3 dynamic lines
+  u('sCardD2','PCI = 3×'+n1+'+'+n2+' = '+pci);
+  u('sCardD3','v = '+pci+' mod 4 = '+v+' · 144 RE');
+  // CSS class — no DOM re-render
+  var svg=document.getElementById('ssbSvg');
+  if(svg){
+    var cls=svg.getAttribute('class').replace(/\bv\d\b/,'v'+v);
+    svg.setAttribute('class',cls);
+  }
+  Engine.ctxSet('pci',pci);
+  Engine.ctxSet('nid1',n1);
+  Engine.ctxSet('nid2',n2);
+  Engine.ctxSet('dmrs_v',v);
+}
+
+/* ─── Sub 4: MIB 比特打包 & Polar 编码链路 ─────────────────── */
+function renderMIBPolar(){
+  var cur=_mibStep, scanning=_mibScan;
+
+  /* ══ 第一层：SSB / PBCH / MIB 容器关系 (y=-22~72) ══ */
+  var layer1=
+    '<rect x="28" y="-22" width="664" height="90" rx="10" fill="#f8fafc" stroke="#c8d6e8" stroke-width="1.5"/>'+
+    '<rect x="36" y="-15" width="648" height="76" rx="7" fill="#eff6ff" stroke="#93c5fd" stroke-width="1.2"/>'+
+    '<text x="44" y="-2" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="9" fill="#1e40af" font-weight="700">SSB &nbsp; 时频容器 · 4 Symbol × 20 PRB = 960 RE</text>'+
+    '<rect x="48" y="4" width="578" height="48" rx="5" fill="#f0fdf4" stroke="#6ee7b7" stroke-width="1.2"/>'+
+    '<text x="56" y="16" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="9" fill="#065f46" font-weight="700">PBCH &nbsp; 信道 · Symbol 1/2/3 中 576 RE &nbsp;—&nbsp; 去除 DM-RS(144) 得 <tspan font-weight="900" fill="#1d4ed8">432 RE 有效载体</tspan></text>'+
+    '<rect x="62" y="22" width="380" height="22" rx="4" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.2"/>'+
+    '<text x="70" y="33" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="9" fill="#92400e" font-weight="700">MIB &nbsp; 货物 · 23 bit &nbsp;→&nbsp; Polar 链路膨胀 &nbsp;→&nbsp; 864 bit 装甲注入</text>'+
+    '<rect x="454" y="20" width="168" height="26" rx="5" fill="#1d4ed8" opacity="0.12" stroke="#1d4ed8" stroke-width="1.5"/>'+
+    '<text x="538" y="33" text-anchor="middle" dominant-baseline="central" font-family="SF Mono,Consolas,monospace" font-size="10" fill="#1d4ed8" font-weight="900">432 RE × QPSK = 864 bit</text>';
+
+  /* ══ 装配线阶段定义 ══ */
+  var STAGES=[
+    {bits:23,  short:'MIB',      col:'#1d4ed8', label:'原始 MIB',    sub:'23bit 有效字段（TS 38.331 §6.2.2）'},
+    {bits:32,  short:'+ 物理层', col:'#7c3aed', label:'+ 物理层时序', sub:'基站硬件注入 SFN[3:0] · HRF · k_SSB[MSB] = 9bit'},
+    {bits:48,  short:'+ CRC',    col:'#0891b2', label:'+ CRC-24C',   sub:'生成 24bit 校验码 → 共 48bit 进编码器'},
+    {bits:512, short:'Polar',    col:'#059669', label:'Polar 编码',   sub:'48个有效比特 + 464个冻结比特 → 512bit'},
+    {bits:864, short:'速率匹配', col:'#d97706', label:'速率匹配 + 扰码', sub:'512→864bit · ÷2=432RE · PCI小区染色'},
+  ];
+  var maxBits=864, BX=28, BY=145, BH=32, BW=664;
+
+  /* ── 进度点 ── */
+  var dots='';
+  for(var d=0;d<5;d++){
+    var dpx=(BX+d*BW/4+(d<4?BW/8:BW/8)).toFixed(1);
+    var dact=d<=cur;
+    dots+='<circle cx="'+dpx+'" cy="'+(BY-22)+'" r="'+(d===cur?7:4)+'"'+
+      ' fill="'+(dact?STAGES[d].col:'#d4dce8')+'"'+
+      ' stroke="'+(d===cur?'white':'none')+'" stroke-width="2"'+
+      ' style="cursor:pointer" onclick="advMib('+d+')"/>'+
+      '<text x="'+dpx+'" y="'+(BY-38)+'" text-anchor="middle" dominant-baseline="central"'+
+      ' font-family="SF Mono,Consolas,monospace" font-size="8" fill="'+(dact?STAGES[d].col:'#c8d6e8')+'">'+
+      STAGES[d].bits+'bit</text>';
+    if(d<4){
+      var lx1=(parseFloat(dpx)+9).toFixed(1), lx2=(parseFloat(dpx)+BW/4-11).toFixed(1);
+      dots+='<line x1="'+lx1+'" y1="'+(BY-22)+'" x2="'+lx2+'" y2="'+(BY-22)+'"'+
+        ' stroke="'+(d<cur?STAGES[d].col:'#d4dce8')+'" stroke-width="1.2"/>';
+    }
+  }
+
+  /* ── 进度条主体 ── */
+  var bars='<rect x="'+BX+'" y="'+BY+'" width="'+BW+'" height="'+BH+'" rx="4" fill="#f1f5f9" stroke="#d4dce8" stroke-width="1"/>';
+  var cx2=0;
+  for(var si=0;si<=cur;si++){
+    var sw=(STAGES[si].bits/maxBits*BW);
+
+    if(si===1 && si===cur){
+      /* 32bit 双色拼接：蓝色 MIB 部分 + 紫色隐式注入 */
+      var mibW=(23/32)*sw, injW=(9/32)*sw;
+      bars+=
+        '<rect x="'+(BX+cx2).toFixed(1)+'" y="'+BY+'" width="'+mibW.toFixed(1)+'" height="'+BH+'" fill="#1d4ed8" opacity="0.75"/>'+
+        '<rect x="'+(BX+cx2+mibW).toFixed(1)+'" y="'+BY+'" width="'+(injW-0.5).toFixed(1)+'" height="'+BH+'" rx="0" fill="#7c3aed" opacity="0.85"/>'+
+        // 引线：紫色块 → 上方标注
+        '<line x1="'+(BX+cx2+mibW+injW/2).toFixed(1)+'" y1="'+BY+'"'+
+        ' x2="'+(BX+cx2+mibW+injW/2).toFixed(1)+'" y2="'+(BY-8)+'"'+
+        ' stroke="#7c3aed" stroke-width="1.5" stroke-dasharray="3 2"/>'+
+        '<rect x="'+(BX+cx2+mibW+injW/2-72).toFixed(1)+'" y="'+(BY-24)+'" width="144" height="14" rx="4" fill="#7c3aed" opacity="0.15" stroke="#7c3aed" stroke-width="1"/>'+
+        '<text x="'+(BX+cx2+mibW+injW/2).toFixed(1)+'" y="'+(BY-17)+'" text-anchor="middle" dominant-baseline="central"'+
+        ' font-family="SF Mono,Consolas,monospace" font-size="8" fill="#7c3aed" font-weight="700">'+
+        '&#9660; 基站时钟注入 SFN[3:0]·HRF·k_SSB[4]</text>';
+    } else if(si===3 && si===cur){
+      /* 512bit Polar：金色48有效位 + 灰色464冻结位 */
+      var valW=(48/512)*sw, froW=(464/512)*sw;
+      bars+=
+        '<rect x="'+(BX+cx2).toFixed(1)+'" y="'+BY+'" width="'+froW.toFixed(1)+'" height="'+BH+'" fill="#d4dce8" opacity="0.85"/>'+
+        '<rect x="'+(BX+cx2+froW).toFixed(1)+'" y="'+BY+'" width="'+valW.toFixed(1)+'" height="'+BH+'" fill="#f59e0b" opacity="0.9"/>'+
+        '<text x="'+(BX+cx2+froW/2).toFixed(1)+'" y="'+(BY+BH/2)+'" text-anchor="middle" dominant-baseline="central"'+
+        ' font-family="SF Mono,Consolas,monospace" font-size="9" fill="#64748b" font-weight="700">冻结 464bit</text>'+
+        '<text x="'+(BX+cx2+froW+valW/2).toFixed(1)+'" y="'+(BY+BH/2)+'" text-anchor="middle" dominant-baseline="central"'+
+        ' font-family="SF Mono,Consolas,monospace" font-size="8" fill="#92400e" font-weight="800">48</text>';
+    } else if(si===4 && si===cur){
+      /* 864bit：渐变纹理表示扰码 */
+      bars+=
+        '<defs>'+
+        '<pattern id="scr" x="0" y="0" width="6" height="6" patternUnits="userSpaceOnUse">'+
+        '<rect width="6" height="6" fill="#d97706" opacity="0.82"/>'+
+        '<rect width="3" height="3" fill="#b45309" opacity="0.35"/>'+
+        '<rect x="3" y="3" width="3" height="3" fill="#b45309" opacity="0.35"/>'+
+        '</pattern></defs>'+
+        '<rect x="'+(BX+cx2).toFixed(1)+'" y="'+BY+'" width="'+sw.toFixed(1)+'" height="'+BH+'" rx="0" fill="url(#scr)"/>'+
+        // 864÷2=432 引线
+        '<line x1="'+(BX+cx2+sw-60).toFixed(1)+'" y1="'+(BY+BH)+'"'+
+        ' x2="'+(BX+cx2+sw-60).toFixed(1)+'" y2="'+(BY+BH+16)+'"'+
+        ' stroke="#d97706" stroke-width="1.5"/>'+
+        '<rect x="'+(BX+cx2+sw-110).toFixed(1)+'" y="'+(BY+BH+16)+'" width="116" height="14" rx="4"'+
+        ' fill="#fff7ed" stroke="#d97706" stroke-width="1.2"/>'+
+        '<text x="'+(BX+cx2+sw-52).toFixed(1)+'" y="'+(BY+BH+23)+'" text-anchor="middle" dominant-baseline="central"'+
+        ' font-family="SF Mono,Consolas,monospace" font-size="8" fill="#d97706" font-weight="700">'+
+        '864÷2 = 432 PBCH RE &#8593;</text>';
+    } else {
+      bars+='<rect x="'+(BX+cx2).toFixed(1)+'" y="'+BY+'" width="'+sw.toFixed(1)+'" height="'+BH+'"'+
+        ' fill="'+STAGES[si].col+'" opacity="'+(si===cur?'0.85':'0.6')+'"/>';
+    }
+    cx2+=sw;
+  }
+  // Bit count on bar
+  bars+='<text x="'+(BX+cx2/2).toFixed(1)+'" y="'+(BY+BH/2)+'" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="11" fill="white" font-weight="900">'+
+    STAGES[cur].bits+' bit</text>';
+
+  /* ── 当前阶段说明 ── */
+  var NOTE_Y=BY+BH+(cur===1?34:cur===4?34:12);
+  bars+=
+    '<text x="'+BX+'" y="'+(NOTE_Y+2)+'" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="10" fill="'+STAGES[cur].col+'" font-weight="700">'+
+    STAGES[cur].label+'</text>'+
+    '<text x="'+BX+'" y="'+(NOTE_Y+18)+'" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="9" fill="#64748b">'+STAGES[cur].sub+'</text>';
+
+  // 特殊阶段附加说明
+  var extraNote='';
+  if(cur===3){
+    extraNote=
+      '<text x="'+BX+'" y="'+(NOTE_Y+34)+'" dominant-baseline="central"'+
+      ' font-family="SF Mono,Consolas,monospace" font-size="8.5" fill="#64748b">'+
+      '金色 48bit = 有效数据 · 灰色 464bit = 冻结比特（置0）· 极化码让噪声只攻击冻结位，保护有效比特</text>';
+  }
+  if(cur===4){
+    extraNote=
+      '<text x="'+BX+'" y="'+(NOTE_Y+34)+'" dominant-baseline="central"'+
+      ' font-family="SF Mono,Consolas,monospace" font-size="8.5" fill="#64748b">'+
+      '扰码序列由 PCI 决定 → 不同小区 PBCH 扰码不同 → 防止 UE 误将邻区 PBCH 当作本小区解读（"小区染色"）</text>';
+  }
+
+  /* ── 导航按钮 ── */
+  var BTN_Y=BY+BH+(cur===3||cur===4?52:34);
+  var navBtns=
+    '<g onclick="advMib('+Math.max(0,cur-1)+')" style="cursor:pointer;'+(cur===0?'opacity:0.3':'')+'" >'+
+    '<rect x="488" y="'+BTN_Y+'" width="84" height="20" rx="5" fill="white" stroke="#c8d6e8" stroke-width="1.2"/>'+
+    '<text x="530" y="'+(BTN_Y+10)+'" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="10" fill="#64748b">&#9665; 上一步</text>'+
+    '</g>'+
+    '<g onclick="advMib('+Math.min(4,cur+1)+')" style="cursor:pointer;'+(cur===4?'opacity:0.3':'')+'" >'+
+    '<rect x="580" y="'+BTN_Y+'" width="84" height="20" rx="5" fill="'+STAGES[Math.min(cur+1,4)].col+'" stroke="none"/>'+
+    '<text x="622" y="'+(BTN_Y+10)+'" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="10" fill="white" font-weight="700">下一步 &#9655;</text>'+
+    '</g>';
+
+  /* ══ 第三层：23bit MIB 字段位图 ══ */
+  var MIB_FIELDS=[
+    {name:'SFN[9:4]', bits:6, col:'#3b82f6', val:'000101', note:'系统帧号高6位'},
+    {name:'SCS',      bits:1, col:'#7c3aed', val:'1',      note:'1=30kHz'},
+    {name:'SFN[3:0]', bits:4, col:'#0891b2', val:'0100',   note:'帧号低4位*'},
+    {name:'HRF',      bits:1, col:'#06b6d4', val:'0',      note:'半帧标识*'},
+    {name:'k_SSB',    bits:5, col:'#d97706', val:'00010',  note:'RE精对齐',  key:true},
+    {name:'CORS#0',   bits:4, col:'#059669', val:'0101',   note:'Stage5钥匙', key:true},
+    {name:'Barred',   bits:1, col:'#dc2626', val:'0',      note:'禁入标志'},
+    {name:'Spare',    bits:1, col:'#94a3b8', val:'0',      note:'保留'},
+  ];
+  var MX=28, MW=664, MBH=28;
+  // Dynamic Y based on current stage notes
+  var MAP_Y=BY+BH+(cur===3||cur===4?68:50)+50;
+
+  /* bit ruler axis */
+  var ruler='<line x1="'+MX+'" y1="'+(MAP_Y-14)+'" x2="'+(MX+MW)+'" y2="'+(MAP_Y-14)+'" stroke="#d4dce8" stroke-width="1"/>';
+  for(var bi=0;bi<=23;bi++){
+    var rx2=(MX+bi*MW/23).toFixed(1);
+    var isM=(bi%4===0);
+    ruler+='<line x1="'+rx2+'" y1="'+(MAP_Y-14)+'" x2="'+rx2+'" y2="'+(MAP_Y-(isM?20:17))+'" stroke="#94a3b8" stroke-width="'+(isM?1.2:0.6)+'"/>';
+    if(isM||bi===23){
+      ruler+='<text x="'+rx2+'" y="'+(MAP_Y-24)+'" text-anchor="middle" dominant-baseline="central"'+
+        ' font-family="SF Mono,Consolas,monospace" font-size="7.5" fill="#94a3b8">'+bi+'</text>';
+    }
+  }
+  ruler+='<text x="'+MX+'" y="'+(MAP_Y-32)+'" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="8" fill="#94a3b8">bit →</text>';
+
+  /* field bars */
+  var mibBits='', off3=0;
+  MIB_FIELDS.forEach(function(f){
+    var fw=f.bits*MW/23, fx=MX+off3*MW/23;
+    var isKey=!!f.key;
+    var op=scanning?(isKey?'0.95':'0.12'):'0.82';
+    mibBits+=
+      '<rect x="'+fx.toFixed(1)+'" y="'+MAP_Y+'" width="'+(fw-1).toFixed(1)+'" height="'+MBH+'"'+
+      ' rx="3" fill="'+f.col+'" opacity="'+op+'"'+
+      (scanning&&isKey?' filter="url(#glow2)"':'')+
+      '/>'+
+      '<text x="'+(fx+fw/2).toFixed(1)+'" y="'+(MAP_Y+MBH/2)+'"'+
+      ' text-anchor="middle" dominant-baseline="central"'+
+      ' font-family="SF Mono,Consolas,monospace" font-size="'+(fw>50?9:fw>25?7.5:6)+'"'+
+      ' fill="white" font-weight="'+(isKey?'800':'600')+'" opacity="'+op+'">'+
+      (fw>18?f.name:'')+'</text>'+
+      // value below
+      '<text x="'+(fx+fw/2).toFixed(1)+'" y="'+(MAP_Y+MBH+9)+'" text-anchor="middle" dominant-baseline="central"'+
+      ' font-family="SF Mono,Consolas,monospace" font-size="7.5"'+
+      ' fill="'+(scanning&&!isKey?'#d4dce8':f.col)+'" opacity="'+(scanning&&!isKey?'0.25':'0.75')+'">'+
+      f.val+'</text>'+
+      // note below val
+      '<text x="'+(fx+fw/2).toFixed(1)+'" y="'+(MAP_Y+MBH+20)+'" text-anchor="middle" dominant-baseline="central"'+
+      ' font-family="SF Mono,Consolas,monospace" font-size="7"'+
+      ' fill="'+(scanning&&!isKey?'#e2e8f0':'#94a3b8')+'" opacity="'+(scanning&&!isKey?'0.2':'0.7')+'">'+
+      f.note+'</text>';
+
+    // Key callouts when scanning
+    if(scanning && isKey){
+      var kcx=(fx+fw/2).toFixed(1);
+      var isKssb=f.name==='k_SSB';
+      var kLabel=isKssb?'RE 级精对齐 → 已在频域定位步骤完成':'CORESET#0 查表索引 → Stage 5 入口 🔑';
+      var kW=isKssb?176:208;
+      var kAnch=isKssb?(parseFloat(kcx)+kW/2>720?'end':'middle'):'middle';
+      mibBits+=
+        '<line x1="'+kcx+'" y1="'+(MAP_Y+MBH)+'" x2="'+kcx+'" y2="'+(MAP_Y+MBH+38)+'"'+
+        ' stroke="'+f.col+'" stroke-width="1.5" stroke-dasharray="3 2"/>'+
+        '<rect x="'+(parseFloat(kcx)-kW/2).toFixed(1)+'" y="'+(MAP_Y+MBH+38)+'"'+
+        ' width="'+kW+'" height="18" rx="5"'+
+        ' fill="'+f.col+'" opacity="0.14" stroke="'+f.col+'" stroke-width="1.5"/>'+
+        '<text x="'+kcx+'" y="'+(MAP_Y+MBH+47)+'" text-anchor="middle" dominant-baseline="central"'+
+        ' font-family="SF Mono,Consolas,monospace" font-size="8.5" fill="'+f.col+'" font-weight="700">'+
+        kLabel+'</text>';
+    }
+    off3+=f.bits;
+  });
+
+  // Scan button
+  var SCAN_Y=MAP_Y-14;
+  var scanBtn=
+    '<g onclick="toggleMibScan()" style="cursor:pointer;">'+
+    '<rect x="556" y="'+(SCAN_Y-10)+'" width="130" height="20" rx="5"'+
+    ' fill="'+(scanning?'#1d4ed8':'white')+'" stroke="#1d4ed8" stroke-width="1.5"/>'+
+    '<text x="621" y="'+SCAN_Y+'" text-anchor="middle" dominant-baseline="central"'+
+    ' font-family="SF Mono,Consolas,monospace" font-size="9.5"'+
+    ' fill="'+(scanning?'white':'#1d4ed8')+'" font-weight="700">'+
+    (scanning?'▣ X光 ON · 点击关闭':'▢ X光扫描 k_SSB / CORS#0')+'</text>'+
+    '</g>';
+
+  var SVG_H=scanning?(MAP_Y+MBH+68):(MAP_Y+MBH+36);
+  return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;gap:6px;">'+
+    '<svg id="mibSvg" viewBox="0 -30 720 '+SVG_H+'"'+
+    ' width="100%" height="100%" style="display:block;flex:1;min-height:0;" xmlns="http://www.w3.org/2000/svg">'+
+    '<defs>'+
+    '<filter id="glow2"><feGaussianBlur stdDeviation="2.5" result="blur"/>'+
+    '<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>'+
+    '</defs>'+
+    layer1+dots+bars+extraNote+navBtns+ruler+scanBtn+mibBits+
+    '</svg></div>';
+}
+
+function advMib(step){
+  if(step<0||step>4) return;
+  _mibStep=step;
+  var vc=document.getElementById('vizContainer'); if(vc) vc.innerHTML=renderMIBPolar();
+}
+function toggleMibScan(){
+  _mibScan=!_mibScan;
+  var vc=document.getElementById('vizContainer'); if(vc) vc.innerHTML=renderMIBPolar();
+}
+function _runMibAuto(){
+  _mibStep=0; _mibScan=false;
+  var vc=document.getElementById('vizContainer');
+  if(vc) vc.innerHTML=renderMIBPolar();
+  var tid=Engine.addTimer(setInterval(function(){
+    if(_mibStep<4){ _mibStep++; }
+    else { _mibScan=true; clearInterval(tid); }
+    var vc2=document.getElementById('vizContainer');
+    if(vc2) vc2.innerHTML=renderMIBPolar();
+  }, 1100));
+}
+
+/* ─── Viz Router ────────────────────────────────────────────── */
+Engine.renderVizSVG = function(subIdx) {
+  if (subIdx === 0) return renderS1Discuss();
+  if (subIdx === 1) return renderSSBBurst();
+  if (subIdx === 2) return renderFreqCoord();
+  if (subIdx === 3) return renderSSBGrid();
+  if (subIdx === 4) return renderMIBPolar();
+  return renderS1Discuss();
+};
+
+Engine.onAfterRender = function(subIdx) {
+  if(subIdx===1){ _animBeam=0; _animPlaying=true; _startAnim(); }
+  if(subIdx===3){ setTimeout(_runAutoSteps, 300); }
+  if(subIdx===4){ setTimeout(_runMibAuto, 400); }
+};
+
+Engine.onStageExit = function() {
+  if(_animTid){ clearInterval(_animTid); _animTid=null; }
+  if(_autoStepTid){ clearInterval(_autoStepTid); _autoStepTid=null; }
+};
+
+Engine.boot({ stageIdx: 1 });
+</script>
+</body>
+</html>
