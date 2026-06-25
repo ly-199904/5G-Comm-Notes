@@ -293,7 +293,7 @@ UE 发射侧预补偿流程（38.821 Section 6.3.3）
 | Numerology 选择 | 按业务和频段选 | **μ=0/1 优先**（HARQ 时序最优） |
 | 新增 IE | 无 | `ntn-Config-r17`, `ntn-SatelliteInfo-r17`, `ta-Info-r17` |
 
-#### 5.4 架构洞见：SCS 的设计边界
+#### 5.5 架构洞见：SCS 的设计边界
 
 这一分析揭示了 Numerology 设计的内在哲学边界：
 

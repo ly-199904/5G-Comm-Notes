@@ -1,4 +1,4 @@
-> 📂 代码库导航： > [resource_grid_sim.py](./resource-grid-sim)  
+> 📂 代码库：`simulation/phase1/resource_grid_sim.py`
 
 # resource_grid_sim.py · 仿真说明文档
 

@@ -1,4 +1,4 @@
-> 📂 代码库导航： > [numerology_sim.py](./numerology-sim) 
+> 📂 代码库：`simulation/phase1/numerology_sim.py`
 
 # numerology_sim.py · 仿真说明文档
 

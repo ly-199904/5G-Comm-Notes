@@ -684,3 +684,5 @@ Preamble 到达 gNB 时理论上接近 0 时延偏差 → gNB 测量残差 TA �
 - **3GPP TR 38.821 v17.3.0** — NTN RACH 增强；ra-ResponseWindow 扩展（§6.3）
 - **3GPP TS 38.321 v16.x.0** — 2-Step RACH（MsgA / MsgB，§5.1.1a）
 - ShareTechnote — [5G NR RACH](https://www.sharetechnote.com/html/5G/5G_RACH.html)
+
+<InitialAccessFlow />

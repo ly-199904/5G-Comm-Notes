@@ -2,47 +2,32 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "🚀 启动预览 (docs:dev)",
+            "label": "启动预览 (docs:dev)",
+            "detail": "本地启动 VitePress 文档预览，浏览器访问 http://localhost:5173",
             "type": "shell",
             "command": "npm run docs:dev",
             "problemMatcher": [],
-            "group": "test",
+            "group": "build",
             "presentation": {
                 "reveal": "always",
-                "panel": "new"
+                "panel": "dedicated",
+                "clear": true
             }
         },
         {
-            "label": "🟦【一键同步】Push-to-GitHub",
+            "label": "一键同步 Push-to-GitHub",
+            "detail": "git add . && git commit && git push（请先在终端中手动执行以确保安全）",
             "type": "shell",
             "command": "git add . && git commit -m 'update notes' && git push",
             "problemMatcher": [],
             "group": {
                 "kind": "build",
-                "isDefault": true
+                "isDefault": false
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated"
             }
-        },
+        }
     ]
 }
-
-// # 在项目根目录执行，打包时排除 node_modules
-// Compress-Archive -Path docs, simulation, package.json, package-lock.json -DestinationPath 5G-Comm-Notes-review.zip
-
-// # 在 D:\Projects\5G-Comm-Notes 执行
-// Copy-Item "$HOME\Downloads\DCIFieldParser.vue"       "docs\.vitepress\components\DCIFieldParser.vue"
-// Copy-Item "$HOME\Downloads\BlindDecodingVisualizer.vue"       "docs\.vitepress\components\BlindDecodingVisualizer.vue"
-// Copy-Item "$HOME\Downloads\CORESETConfigurator.vue"       "docs\.vitepress\components\CORESETConfigurator.vue"
-
-// 打开 docs/.vitepress/theme/index.ts
-// import DCIFieldParser       from '../components/DCIFieldParser.vue'
-// import BlindDecodingVisualizer from '../components/BlindDecodingVisualizer.vue'
-// import CORESETConfigurator        from '../components/CORESETConfigurator.vue'
-
-// enhanceApp 内补充：
-// app.component('DCIFieldParser', DCIFieldParser)
-// app.component('BlindDecodingVisualizer', BlindDecodingVisualizer)
-// app.component('CORESETConfigurator', CORESETConfigurator)
-
-// <DCIFieldParser />
-// <BlindDecodingVisualizer />
-// <CORESETConfigurator />

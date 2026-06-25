@@ -20,6 +20,7 @@ export default withMermaid(defineConfig({
   themeConfig: {
     nav: [
       { text: '首页',    link: '/' },
+      { text: 'Phase 0', link: '/phase0/' },
       { text: 'Phase 1', link: '/phase1/' },
       { text: 'Phase 2', link: '/phase2/rach-procedure' },
       { text: 'Phase 3', link: '/phase3/ntn-architecture' },
@@ -27,6 +28,15 @@ export default withMermaid(defineConfig({
     ],
 
     sidebar: [
+      {
+        text: '📚 Phase 0 · 先导课程',
+        collapsed: false,
+        items: [
+          { text: '总览',               link: '/phase0/' },
+          { text: '通信原理',           link: '/phase0/communication-principles' },
+          { text: '无线通信基础',       link: '/phase0/wireless-communications' },
+        ],
+      },
       {
         text: '🧱 Phase 1 · 基石层',
         collapsed: false,
@@ -42,7 +52,6 @@ export default withMermaid(defineConfig({
         text: '⚙️ Phase 2 · 骨架层',
         collapsed: true,
         items: [
-          { text: 'DMRS 参考信号',               link: '/phase2/dmrs' },
           { text: 'RACH 随机接入流程',            link: '/phase2/rach-procedure' },
           { text: 'PDCCH & DCI 调度机制',         link: '/phase2/pdcch-dci' },
           { text: 'HARQ 混合自动重传',             link: '/phase2/harq' },
@@ -62,6 +71,15 @@ export default withMermaid(defineConfig({
         ],
       },
       {
+        text: '🔗 Phase 3 · 连接管理与移动性',
+        collapsed: false,
+        items: [
+          { text: '3.1 RRC 状态机', link: '/phase3/rrc-state-machine' },
+          { text: '3.2 系统消息与寻呼', link: '/phase3/si-paging' },
+          { text: '3.3 载波聚合', link: '/phase3/carrier-aggregation' },
+        ],
+      },
+      {
         text: '🐍 仿真代码库',
         collapsed: true,
         items: [
@@ -69,6 +87,15 @@ export default withMermaid(defineConfig({
           { text: 'resource_grid_sim.py',    link: '/code/resource-grid-sim' },
           { text: 'channel_mapping_sim.py',  link: '/code/channel-mapping-sim' },
           { text: 'ofdm_basics_sim.py',      link: '/code/ofdm-basics-sim' },
+          { text: 'rach_sim.py',             link: '/code/rach-sim' },
+          { text: 'pdcch_sim.py',           link: '/code/pdcch-sim' },
+          { text: 'harq_sim.py',            link: '/code/harq-sim' },
+          { text: 'mimo_sim.py',            link: '/code/mimo-beamforming-sim' },
+          { text: 'csi_sim.py',             link: '/code/csi-framework-sim' },
+          { text: 'beam_management_sim.py',  link: '/code/beam-management-sim' },
+          { text: 'rrc_state_machine_sim.py', link: '/code/rrc-state-machine-sim' },
+          { text: 'si_paging_sim.py', link: '/code/si-paging-sim' },
+          { text: 'ca_sim.py', link: '/code/ca-sim' },
         ],
       },
     ],

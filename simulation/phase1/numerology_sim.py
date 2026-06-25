@@ -27,11 +27,16 @@ import torch.nn as nn
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+
+# 中文字体（避免标题/坐标显示为框）
+plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'Noto Sans SC', 'DejaVu Sans']
+plt.rcParams['axes.unicode_minus'] = False
 from dataclasses import dataclass, field
 from typing import Optional
 import warnings
 import os
-OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'output')
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 全局常量（38.211 Section 4.1）

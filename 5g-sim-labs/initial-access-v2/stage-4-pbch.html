@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Stage 4 · PBCH 译码 & MIB</title>
+<link rel="stylesheet" href="design-system.css">
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['$','$'], ['\\(','\\)']] },
+  options: { skipHtmlTags: ['script','noscript','style','textarea'] }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+<style>
+.case-btn { padding:4px 11px;border-radius:5px;font-size:11px;font-family:var(--font-mono);
+            font-weight:700;cursor:pointer;border:1.5px solid var(--border);
+            background:var(--surface);color:var(--text-sec);transition:all .15s; }
+.case-btn.on { background:#2563eb;border-color:#2563eb;color:white; }
+.case-btn.ans-on { background:#059669;border-color:#059669;color:white; }
+.ctrl-bar { display:flex;align-items:center;gap:12px;background:var(--surface);
+            border:1px solid var(--border);border-radius:8px;padding:7px 14px;flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="stage-data.js"></script>
+<script src="engine.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════
+   Stage 4 · PBCH 译码 · 4 sub-steps (0..3)
+   配色：蓝 #2563eb(主) / 绿 #059669(答案) / 琥珀 #f59e0b(DMRS点睛)
+        / 灰 #94a3b8(对照,冻结位) / 红 #dc2626(锁定高光)
+   写入总线：kssb(点亮顶栏) · sfn_offset · hrf · ssb_index · mib
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── 颜色常量 ── */
+var C_MAIN='#2563eb', C_MAIND='#1e40af', C_ANS='#059669', C_ANSL='#d1fae5',
+    C_HI='#dc2626', C_DMRS='#f59e0b', C_DMRSL='#fef3c7',
+    C_SCR='#7c3aed', C_SCRL='#ede9fe', C_SCRD='#5b21b6',
+    C_GREY='#94a3b8', C_SEC='#475569', C_MUT='#94a3b8';
+
+/* ── 真实小区参数（承接 Stage 1/3）── */
+var TRUE_PCI=337, V_DMRS=TRUE_PCI%4;          // =1
+var SFN=614, SFN_MSB6=SFN>>4, SFN_LSB4=SFN&0xF;   // 38 / 6
+var KSSB=6, HRF=0, SSB_IDX=2;
+var POLAR_N=512, POLAR_K=56, POLAR_E=864, RE_DATA=432, RE_DMRS=144;
+/* 两层扰码分段（S4.2）：第一层按 SFN 2/3 位 LSB 选 1/4 段；第二层按 ī_SSB 选 1/8 段 */
+var L1_SEG=((SFN>>2)&1)*2+((SFN>>1)&1);  // SFN 第3位<<1|第2位 = 3 (SFN=614)
+var L2_SEG=SSB_IDX&0x7;                    // ī_SSB = 2
+var M_FR1=29, M_FR2=26;                    // 实扰比特数（不扰3 / 不扰6）
+
+/* ── 预计算数据（载入时一次，动画不重算）── */
+var SEG128=[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,1,3,0,0,0,0,0,0,0,1,0,0,0,1,0,1,2,4,0,0,0,1,0,3,3,4,1,3,3,4,4,4,4,4];
+var RX_PTS=[[-0.294,1.29],[1.115,0.119],[-1.184,-0.234],[-0.009,-0.977],[-0.213,1.024],[1.156,-0.011],[-1.015,-0.067],[0.193,-1.26],[-0.269,1.218],[1.296,0.037],[-1.072,-0.271],[0.086,-1.197],[-0.147,1.017],[1.286,0.246],[-0.999,-0.054],[0.258,-1.091],[-0.13,1.301],[1.186,0.176],[-1.225,-0.003],[0.097,-1.194],[0.028,1.125],[1.153,0.193],[-1.096,-0.074],[0.137,-1.078],[-0.014,1.104],[1.099,0.126],[-1.266,-0.235],[0.269,-1.206],[-0.24,1.287],[1.265,0.152],[-1.3,-0.009],[0.122,-1.265],[-0.012,1.312],[1.111,0.218],[-1.117,-0.135],[0.276,-1.125],[-0.264,1.109],[1.276,0.126],[-1.301,-0.059],[0.156,-1.191],[-0.039,1.192],[1.107,0.233],[-1.243,-0.169],[0.043,-1.032],[-0.086,1.046],[1.059,0.045],[-1.131,-0.106],[-0.028,-1.078],[0.035,1.294],[0.982,0.149],[-1.067,-0.28],[0.144,-1.29],[-0.225,1.12],[1.049,0.012],[-1.264,-0.001],[0.126,-1.156],[-0.221,1.171],[1.006,0.248],[-1.032,-0.104],[0.151,-1.22],[0.021,0.992],[1.245,0.189],[-1.31,-0.297],[0.272,-1.211],[-0.178,1.121],[1.049,0.097],[-1.124,-0.053],[0.073,-1.116],[-0.043,1.262],[1.259,0.115],[-1.13,-0.054],[0.077,-1.045],[-0.18,1.076],[1.263,0.247],[-1.202,-0.081],[-0.022,-0.974],[-0.284,1.292],[1.075,0.281],[-1.309,-0.063],[0.044,-1.197]];
+var EQ_PTS=[[0.72,0.898],[0.684,-0.695],[-0.799,0.68],[-0.67,-0.522],[0.582,0.699],[0.617,-0.794],[-0.595,0.655],[-0.754,-0.813],[0.684,0.842],[0.725,-0.863],[-0.764,0.584],[-0.769,-0.706],[0.613,0.65],[0.863,-0.743],[-0.577,0.651],[-0.604,-0.766],[0.816,0.792],[0.761,-0.713],[-0.665,0.833],[-0.761,-0.712],[0.782,0.589],[0.755,-0.681],[-0.643,0.706],[-0.66,-0.676],[0.744,0.606],[0.68,-0.681],[-0.845,0.735],[-0.676,-0.835],[0.747,0.859],[0.788,-0.779],[-0.709,0.881],[-0.796,-0.767],[0.887,0.717],[0.749,-0.639],[-0.696,0.688],[-0.617,-0.796],[0.612,0.779],[0.776,-0.801],[-0.743,0.855],[-0.727,-0.75],[0.791,0.671],[0.757,-0.628],[-0.787,0.755],[-0.68,-0.587],[0.666,0.624],[0.603,-0.697],[-0.683,0.713],[-0.749,-0.564],[0.9,0.676],[0.632,-0.588],[-0.767,0.575],[-0.801,-0.796],[0.641,0.759],[0.576,-0.708],[-0.684,0.86],[-0.719,-0.71],[0.678,0.783],[0.713,-0.551],[-0.628,0.647],[-0.749,-0.762],[0.687,0.522],[0.802,-0.746],[-0.911,0.732],[-0.678,-0.84],[0.667,0.727],[0.633,-0.662],[-0.644,0.736],[-0.721,-0.653],[0.837,0.711],[0.759,-0.796],[-0.648,0.741],[-0.67,-0.617],[0.635,0.704],[0.851,-0.726],[-0.705,0.775],[-0.675,-0.512],[0.727,0.892],[0.773,-0.58],[-0.751,0.857],[-0.792,-0.677]];
+
+/* ── 公共文本助手 ── */
+function _t(x,y,t,o){ o=o||{};
+  return '<text x="'+x+'" y="'+y+'" '+(o.a?'text-anchor="'+o.a+'" ':'')+
+    'dominant-baseline="central" font-family="SF Mono,Consolas,monospace" '+
+    'font-size="'+(o.s||10)+'" '+(o.w?'font-weight="'+o.w+'" ':'')+
+    'fill="'+(o.f||'#1e293b')+'"'+(o.st?' font-style="italic"':'')+
+    (o.id?' id="'+o.id+'"':'')+(o.op!=null?' opacity="'+o.op+'"':'')+'>'+t+'</text>';
+}
+function _svgOpen(gid,c0,c1){
+  return '<svg viewBox="0 0 720 495" width="100%" height="100%" style="display:block;flex:1;min-height:0;" xmlns="http://www.w3.org/2000/svg">'+
+    '<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1">'+
+    '<stop offset="0" stop-color="'+c0+'"/><stop offset="1" stop-color="'+c1+'"/></linearGradient></defs>'+
+    '<rect x="14" y="14" width="692" height="467" rx="14" fill="url(#'+gid+')" stroke="#bfdbfe" stroke-width="1.5"/>';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   S4.0 · 理论黑板（承上 PCI → PBCH 本阶段 → 启下 Stage5）
+   ═══════════════════════════════════════════════════════════ */
+function renderS4Discuss(){
+  var s=_svgOpen('s4bg','#eff6ff','#dbeafe');
+  s+='<rect x="14" y="14" width="692" height="44" rx="14" fill="'+C_MAIN+'" opacity="0.10"/>';
+  s+=_t(360,36,'PBCH：用刚解出的 PCI 当钥匙，读出全网的「时间地图」',{a:'middle',s:13,w:700,f:C_MAIND});
+  s+='<defs><marker id="s4ar" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1L7 4L1 7Z" fill="'+C_MAIN+'"/></marker>'+
+     '<marker id="s4arG" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1L7 4L1 7Z" fill="'+C_ANS+'"/></marker></defs>';
+
+  /* 左：承上 PCI 已锁（绿）*/
+  s+='<rect x="28" y="74" width="204" height="158" rx="10" fill="#fff" stroke="'+C_ANS+'" stroke-width="2"/>';
+  s+='<rect x="28" y="74" width="204" height="32" rx="10" fill="'+C_ANS+'" opacity="0.12"/>';
+  s+=_t(130,91,'① 承上 · PCI 已锁 ✓',{a:'middle',s:11.5,w:700,f:'#065f46'});
+  s+=_t(130,124,'PCI = 337（Stage 3）',{a:'middle',s:10.5,w:700,f:'#047857'});
+  s+='<rect x="44" y="138" width="172" height="56" rx="6" fill="'+C_ANSL+'"/>';
+  s+=_t(130,156,'解锁钥匙：',{a:'middle',s:10,f:'#065f46'});
+  s+=_t(130,176,'v = PCI mod 4 = 1',{a:'middle',s:11,w:800,f:C_ANS});
+  s+=_t(130,213,'→ 可重建 DMRS → 相干解调',{a:'middle',s:9,st:1,f:C_SEC});
+
+  /* 中：PBCH 本阶段（蓝）*/
+  s+='<rect x="258" y="74" width="204" height="158" rx="10" fill="#fff" stroke="'+C_MAIN+'" stroke-width="2.5"/>';
+  s+='<rect x="258" y="74" width="204" height="32" rx="10" fill="'+C_MAIN+'" opacity="0.14"/>';
+  s+=_t(360,91,'② PBCH · 本阶段',{a:'middle',s:11.5,w:700,f:C_MAIND});
+  s+=_t(360,124,'载荷 32 bit',{a:'middle',s:10.5,w:700,f:C_MAIND});
+  s+='<rect x="274" y="138" width="172" height="56" rx="6" fill="#eff6ff"/>';
+  s+=_t(360,154,'24 bit BCH/MIB',{a:'middle',s:10,w:700,f:C_MAIN});
+  s+=_t(360,172,'+ 8 bit 时间位',{a:'middle',s:10,w:700,f:C_DMRS});
+  s+=_t(360,188,'Polar(K=56,N=512)',{a:'middle',s:9,f:C_SEC});
+  s+=_t(360,213,'相干解调 → 译码 → 解析',{a:'middle',s:9,st:1,f:C_SEC});
+
+  /* 右：启下 Stage5 */
+  s+='<rect x="488" y="74" width="204" height="158" rx="10" fill="#fff" stroke="#c8d6e8" stroke-width="1.5"/>';
+  s+='<rect x="488" y="74" width="204" height="32" rx="10" fill="#94a3b8" opacity="0.12"/>';
+  s+=_t(590,91,'③ 启下 · 时间地图',{a:'middle',s:11.5,w:700,f:'#475569'});
+  s+=_t(590,124,'解出并写入 NR_CTX：',{a:'middle',s:10,f:'#334155'});
+  s+='<rect x="504" y="138" width="160" height="56" rx="6" fill="#f1f5f9"/>';
+  s+=_t(590,153,'SFN · 半帧 · k_SSB',{a:'middle',s:10,w:700,f:'#334155'});
+  s+=_t(590,171,'pdcch-ConfigSIB1',{a:'middle',s:9.5,w:700,f:C_MAIN});
+  s+=_t(590,187,'cellBarred',{a:'middle',s:9,f:'#475569'});
+  s+=_t(590,213,'→ Stage 5：反推 CORESET#0',{a:'middle',s:9,st:1,f:C_SEC});
+
+  s+='<line x1="234" y1="153" x2="256" y2="153" stroke="'+C_ANS+'" stroke-width="2" marker-end="url(#s4arG)"/>';
+  s+='<line x1="464" y1="153" x2="486" y2="153" stroke="'+C_MAIN+'" stroke-width="2" marker-end="url(#s4ar)"/>';
+
+  /* 底：接收侧解码链流水线 */
+  s+='<rect x="28" y="248" width="664" height="218" rx="10" fill="#f5f9ff" stroke="#bfdbfe" stroke-width="1"/>';
+  s+=_t(360,268,'接收侧解码链：两层解扰「夹住」Polar 译码（夹心结构）',{a:'middle',s:11.5,w:700,f:C_MAIND});
+  var stages=[
+    ['432 RE','相干解调\n软判→LLR',C_MAIN,'S4.1'],
+    ['第2层解扰','钥匙=ī_SSB\n(DMRS盲检)',C_SCR,'S4.2'],
+    ['速率解匹配','864→512\n重复位合并',C_MAIN,''],
+    ['Polar SCL','L=8 路径\n冻结位+CRC',C_MAIN,'S4.3'],
+    ['第1层解扰','钥匙=SFN\n2/3位(自举)',C_SCR,'S4.2'],
+    ['拆 32 bit','24 MIB\n+8 时间位',C_MAIN,'S4.4'],
+    ['解析+拼接','SFN/k_SSB\n写 NR_CTX',C_ANS,'']
+  ];
+  var bx=44, bw=84, gap=7, by=290, bh=84;
+  stages.forEach(function(st,i){
+    var x=bx+i*(bw+gap);
+    var isAns=(st[2]===C_ANS), isScr=(st[2]===C_SCR);
+    var fillc=isAns?C_ANSL:(isScr?C_SCRL:'#fff');
+    s+='<rect x="'+x+'" y="'+by+'" width="'+bw+'" height="'+bh+'" rx="8" fill="'+fillc+'" stroke="'+st[2]+'" stroke-width="'+(isAns||isScr?2:1.4)+'"/>';
+    s+=_t(x+bw/2,by+16,st[0],{a:'middle',s:10,w:800,f:isAns?C_ANS:(isScr?C_SCRD:C_MAIND)});
+    var lines=st[1].split('\n');
+    s+=_t(x+bw/2,by+40,lines[0],{a:'middle',s:8.5,f:C_SEC});
+    s+=_t(x+bw/2,by+56,lines[1],{a:'middle',s:8.5,f:C_SEC});
+    if(st[3]) s+=_t(x+bw/2,by+73,st[3],{a:'middle',s:8.5,w:800,st:1,f:isAns?C_ANS:(isScr?C_SCRD:C_MAIN)});
+    if(i<stages.length-1){
+      var ax=x+bw+1;
+      s+='<line x1="'+ax+'" y1="'+(by+bh/2)+'" x2="'+(ax+gap-2)+'" y2="'+(by+bh/2)+'" stroke="'+C_MUT+'" stroke-width="1.5" marker-end="url(#s4ar)"/>';
+    }
+  });
+  /* 底注：夹心结构点睛 */
+  s+='<rect x="44" y="392" width="632" height="58" rx="9" fill="#fff" stroke="#bfdbfe" stroke-width="1.2"/>';
+  s+=_t(360,409,'两个紫色「解扰」夹住蓝色「译码」——这就是 PBCH 加扰的夹心设计',{a:'middle',s:10.5,w:800,f:C_SCRD});
+  s+=_t(360,427,'第2层先解（钥匙现成：DMRS 盲检的 ī_SSB）；译码后读出「未扰的 SFN 2/3 位」当钥匙，再解第1层',{a:'middle',s:9.5,f:C_SEC});
+  s+=_t(360,443,'Polar 之所以胜任「第一封信」：短码逼近容量界 + SCL/CRC 在最差 SNR 给出极低误块率',{a:'middle',s:9.5,w:700,f:C_ANS});
+  s+='</svg>';
+  return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;padding-top:6px;">'+s+'</div>';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   S4.1 · DMRS 信道估计 → 相干解调（甜甜圈 → 4 QPSK 簇）
+   ═══════════════════════════════════════════════════════════ */
+var _ceApplied=false, _cePhase=0, _ceTid=null, _ceInterp=false;
+function renderChEst(){
+  var s=_svgOpen('cebg','#eff6ff','#e0ecff');
+  s=s.replace('<svg','<svg id="ceSvg"');
+  s+=_t(360,34,'用 PCI 重建 DMRS → LS 信道估计 → 相干均衡',{a:'middle',s:12.5,w:700,f:C_MAIND});
+
+  /* ── 左上：SSB 时频网格（4 符号 × 子载波，DMRS 梳状 v=1）── */
+  var GX=44, GY=66, GW=296, symW=GW/4, GH=150, rows=12;   // 12 行示意子载波
+  s+='<rect x="'+GX+'" y="'+GY+'" width="'+GW+'" height="'+GH+'" rx="5" fill="#fff" stroke="#c8d6e8" stroke-width="1"/>';
+  var symLbl=['Sym0','Sym1','Sym2','Sym3'], symKind=['PSS','PBCH','SSS+PBCH','PBCH'];
+  for(var c=0;c<4;c++){
+    s+=_t(GX+(c+0.5)*symW,GY-9,symLbl[c],{a:'middle',s:9,f:C_SEC});
+    if(c>0) s+='<line x1="'+(GX+c*symW)+'" y1="'+GY+'" x2="'+(GX+c*symW)+'" y2="'+(GY+GH)+'" stroke="#e2e8f0" stroke-width="0.8"/>';
+  }
+  /* 插值渐变：从琥珀导频向蓝数据 RE 过渡 */
+  s+='<defs><linearGradient id="ceItp" x1="0" y1="0" x2="0" y2="1">'+
+     '<stop offset="0" stop-color="'+C_DMRS+'"/><stop offset="1" stop-color="'+C_MAIN+'"/></linearGradient></defs>';
+  var rh=GH/rows;
+  for(var c=0;c<4;c++){ for(var r=0;r<rows;r++){
+    var cx=GX+c*symW, cy=GY+r*rh, fill='#f8fafc', stroke='#eef2f7', op=0.9;
+    var mid=(r>=4&&r<8);
+    var isD=((r%4)===V_DMRS);
+    if(c===0){ fill=mid?'#cbd5e1':'#f1f5f9'; }                 // PSS 中段
+    else if(c===2){ // SSS+PBCH：中段 SSS，上下 PBCH/DMRS
+      if(mid){ fill='#c7d2fe'; }
+      else { fill=isD?C_DMRS:(_ceInterp?'url(#ceItp)':C_MAIN); if(_ceInterp&&!isD) op=0.55; }
+    } else { // Sym1/Sym3：全 PBCH，DMRS 梳状
+      fill=isD?C_DMRS:(_ceInterp?'url(#ceItp)':C_MAIN); if(_ceInterp&&!isD) op=0.55;
+    }
+    s+='<rect x="'+(cx+0.8)+'" y="'+(cy+0.6)+'" width="'+(symW-1.6)+'" height="'+(rh-1.2)+'" fill="'+fill+'" stroke="'+stroke+'" stroke-width="0.4" opacity="'+op+'"/>';
+  }}
+  s+=_t(GX+0.5*symW,GY+GH*0.5,'PSS',{a:'middle',s:8.5,w:700,f:'#475569'});
+  s+=_t(GX+2.5*symW,GY+GH*0.5,'SSS',{a:'middle',s:8,w:700,f:C_MAIND});
+  /* 插值箭头提示（导频 → 相邻数据）*/
+  if(_ceInterp){
+    var arX=GX+1.5*symW;
+    s+='<defs><marker id="itpA" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1L7 4L1 7Z" fill="'+C_DMRS+'"/></marker></defs>';
+  }
+  /* 网格图例 */
+  var lgY=GY+GH+18;
+  s+='<rect x="'+GX+'" y="'+lgY+'" width="14" height="11" fill="'+C_DMRS+'"/>';
+  s+=_t(GX+20,lgY+5.5,'DMRS 导频 144',{s:9,w:700,f:'#b45309'});
+  s+='<rect x="'+(GX+118)+'" y="'+lgY+'" width="14" height="11" fill="'+(_ceInterp?'url(#ceItp)':C_MAIN)+'"/>';
+  s+=_t(GX+138,lgY+5.5,_ceInterp?'数据 RE（插值得 Ĥ）':'数据 RE 432',{s:9,w:700,f:C_MAIN});
+  if(!_ceInterp){
+    s+=_t(GX+2,lgY+24,'DMRS 落在 k mod 4 = v = 1（PCI 的频域指纹）',{s:9,st:1,f:C_SEC});
+    s+=_t(GX+2,lgY+40,'LS 只估出 144 导频点 → 数据 RE 还没有 Ĥ',{s:9,w:700,f:C_HI});
+  } else {
+    s+=_t(GX+2,lgY+24,'频域线性插值：Ĥ 从梳齿铺满整排',{s:9,w:700,f:C_ANS});
+    s+=_t(GX+2,lgY+40,'权重 0.75/0.25 → 0.5/0.5 → 0.25/0.75（ΔN=4）',{s:9,st:1,f:C_SEC});
+  }
+
+  /* ── 右：IQ 星座（接收甜甜圈 ↔ 均衡 4 簇）── */
+  var cx0=540, cy0=170, R=98;
+  s+='<line x1="'+(cx0-R-14)+'" y1="'+cy0+'" x2="'+(cx0+R+14)+'" y2="'+cy0+'" stroke="#cbd5e1" stroke-width="1"/>';
+  s+='<line x1="'+cx0+'" y1="'+(cy0-R-14)+'" x2="'+cx0+'" y2="'+(cy0+R+14)+'" stroke="#cbd5e1" stroke-width="1"/>';
+  s+=_t(cx0+R+22,cy0,'I',{a:'middle',s:9,f:C_MUT});
+  s+=_t(cx0,cy0-R-22,'Q',{a:'middle',s:9,f:C_MUT});
+  if(!_ceApplied){
+    /* 接收：未知 φ 抹成甜甜圈（整体旋转）*/
+    s+=_t(cx0,cy0-R-40,'接收 PBCH：未知信道 φ + 噪声 → 甜甜圈',{a:'middle',s:10.5,w:700,f:C_SEC});
+    s+='<circle cx="'+cx0+'" cy="'+cy0+'" r="'+(R*0.74).toFixed(1)+'" fill="none" stroke="'+C_GREY+'" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.6"/>';
+    s+='<g transform="rotate('+(_cePhase*57.3).toFixed(1)+' '+cx0+' '+cy0+')">';
+    RX_PTS.forEach(function(p){
+      s+='<circle cx="'+(cx0+p[0]*R*0.55).toFixed(1)+'" cy="'+(cy0-p[1]*R*0.55).toFixed(1)+'" r="2.1" fill="'+C_GREY+'" opacity="0.72"/>';
+    });
+    s+='</g>';
+    s+=_t(cx0,cy0+R+30,'相位被信道抹掉 → 无法判 QPSK 象限',{a:'middle',s:10,w:700,f:C_SEC});
+  } else {
+    /* 均衡后：4 个干净 QPSK 簇（绿）*/
+    s+=_t(cx0,cy0-R-40,'均衡后：Ĥ 旋正 → 4 个干净 QPSK 簇',{a:'middle',s:10.5,w:700,f:C_ANS});
+    [[1,1],[1,-1],[-1,1],[-1,-1]].forEach(function(q){
+      var qx=cx0+q[0]*R*0.5, qy=cy0-q[1]*R*0.5;
+      s+='<circle cx="'+qx+'" cy="'+qy+'" r="15" fill="'+C_ANS+'" opacity="0.10"/>';
+    });
+    EQ_PTS.forEach(function(p){
+      s+='<circle cx="'+(cx0+p[0]*R*0.5).toFixed(1)+'" cy="'+(cy0-p[1]*R*0.5).toFixed(1)+'" r="2.1" fill="'+C_ANS+'" opacity="0.82"/>';
+    });
+    /* Ĥ 旋正箭头（红高光，仅此一处）*/
+    s+='<defs><marker id="ceH" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M1 1L7 4L1 7Z" fill="'+C_HI+'"/></marker></defs>';
+    s+='<path d="M '+(cx0+R*0.62)+' '+(cy0-R*0.46)+' A 36 36 0 0 0 '+(cx0+R*0.5)+' '+(cy0-R*0.5)+'" fill="none" stroke="'+C_HI+'" stroke-width="2" marker-end="url(#ceH)"/>';
+    s+=_t(cx0+R*0.86,cy0-R*0.42,'×Ĥ⁻¹',{a:'middle',s:9.5,w:800,f:C_HI});
+    s+=_t(cx0,cy0+R+30,'相干 → 每点可判象限 → 输出 2 bit/符号 软判 LLR',{a:'middle',s:10,w:700,f:C_ANS});
+  }
+
+  /* ── 底：诚实点（接上 Stage 3 鸡生蛋）+ 公式 ── */
+  s+='<rect x="44" y="318" width="632" height="100" rx="10" fill="#fff" stroke="#bfdbfe" stroke-width="1.2"/>';
+  s+=_t(360,338,'闭环 Stage 3 的「鸡生蛋」+ 解答「1/4 导频为何够用」',{a:'middle',s:11,w:800,f:C_MAIND});
+  s+=_t(360,360,'Stage 3：PCI 未知 → 无法重建 DMRS → 只能非相干量幅度（甜甜圈测半径）',{a:'middle',s:9.5,f:C_SEC});
+  s+=_t(360,378,'现在：PCI 已知 → 重建 DMRS → LS 估 144 导频 Ĥ → 频域插值铺满 432 数据 → 相干均衡',{a:'middle',s:9.5,w:700,f:C_ANS});
+  s+='<rect x="120" y="392" width="480" height="22" rx="5" fill="#eff6ff"/>';
+  s+=_t(360,403,'Ĥ(4i+v)=Y_DMRS/X_DMRS（LS）  →  Ĥ(中间)=(1−m/4)Ĥ左+(m/4)Ĥ右（插值）',{a:'middle',s:10,w:700,f:C_MAIND});
+  s+='</svg>';
+  return s;
+}
+function renderChEstCtrl(){
+  return '<div class="ctrl-bar" id="ceCtrl">'+
+    '<button class="case-btn'+(_ceInterp||_ceApplied?'':' on')+'" onclick="ceReset()">① 接收原始（甜甜圈）</button>'+
+    '<button class="case-btn'+(_ceInterp&&!_ceApplied?' on':'')+'" onclick="ceInterp()">② 插值铺满 Ĥ</button>'+
+    '<button class="case-btn'+(_ceApplied?' ans-on':'')+'" onclick="ceApply()">③ 应用 → 均衡</button>'+
+    '</div>';
+}
+function renderChEstFull(){
+  return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:14px;">'+renderChEstCtrl()+renderChEst()+'</div>';
+}
+function _ceReCtrl(){ var c=document.getElementById('ceCtrl'); if(c) c.outerHTML=renderChEstCtrl(); }
+function _ceReSVG(){ var e=document.getElementById('ceSvg'); if(e) e.outerHTML=renderChEst(); }
+function _ceStopRot(){ if(_ceTid){ clearInterval(_ceTid); _ceTid=null; } }
+function _ceRot(){
+  _ceStopRot();
+  _ceTid=setInterval(function(){ _cePhase=(_cePhase+0.05)%(2*Math.PI); _ceReSVG(); },120);
+  Engine.addTimer(_ceTid);
+}
+function ceReset(){ _ceApplied=false; _ceInterp=false; _ceRot(); _ceReSVG(); _ceReCtrl();
+  Engine.LogEngine.inject('[DSP] 接收原始 PBCH：相位 φ 未知，星座为甜甜圈；数据 RE 暂无 Ĥ。'); }
+function ceInterp(){ _ceApplied=false; _ceInterp=true; _ceRot(); _ceReSVG(); _ceReCtrl();
+  Engine.LogEngine.inject('[DSP] LS 估 144 导频 Ĥ → 平滑(窗3) → 频域线性插值，铺满 432 数据 RE。'); }
+function ceApply(){
+  _ceStopRot(); _ceInterp=true; _ceApplied=true; _ceReSVG(); _ceReCtrl();
+  Engine.LogEngine.inject('[DSP] 应用 Ĥ 相干均衡 → QPSK 星座坍缩为 4 簇，输出 864 软判 LLR。');
+}
+
+/* ═══════════════════════════════════════════════════════════
+   S4.2 · 两层解扰（夹心结构 + 自举）★ 新增
+   竖向 RX 处理流：均衡软比特 → 第2层解扰 → [Polar 折叠] → 第1层解扰 → 干净载荷
+   _dsPhase: 0 idle / 1 第2层解扰 / 2 译码出载荷(高亮未扰岛) / 3 读出钥匙 / 4 第1层解扰完成
+   ═══════════════════════════════════════════════════════════ */
+var _dsPhase=0, _dsTid=null;
+function renderDescramble(){
+  var s=_svgOpen('dsbg','#f5f3ff','#ede9fe');
+  s+=_t(360,34,'PBCH 两层扰码：解扰顺序与编码相反（自举）',{a:'middle',s:12.5,w:700,f:C_SCRD});
+  s+='<defs><marker id="dsAr" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5.5" markerHeight="5.5" orient="auto"><path d="M1 1L7 4L1 7Z" fill="'+C_SCR+'"/></marker></defs>';
+
+  /* 竖向流：节点居中 x=292，左侧画钥匙来源，右侧画 TX 镜像注释 */
+  var CXc=292, boxW=300, boxH=40, gapV=14;
+  var ys=[66,128,190,278,346];   // 5 个节点 y（Polar 盒更高）
+  function node(y,h,fill,stroke,title,sub,active){
+    s+='<rect x="'+(CXc-boxW/2)+'" y="'+y+'" width="'+boxW+'" height="'+h+'" rx="9" fill="'+fill+'" stroke="'+stroke+'" stroke-width="'+(active?2.4:1.4)+'"'+(active?'':' opacity="0.55"')+'/>';
+    s+=_t(CXc,y+(sub?15:h/2),title,{a:'middle',s:11,w:800,f:active?stroke:'#94a3b8'});
+    if(sub) s+=_t(CXc,y+31,sub,{a:'middle',s:8.8,f:active?C_SEC:'#b9c0cb'});
+  }
+  function vArrow(y0,y1,active){
+    s+='<line x1="'+CXc+'" y1="'+y0+'" x2="'+CXc+'" y2="'+(y1-3)+'" stroke="'+(active?C_SCR:'#cbd5e1')+'" stroke-width="'+(active?2:1.3)+'" marker-end="url(#dsAr)"'+(active?'':' opacity="0.5"')+'/>';
+  }
+
+  /* ① 均衡软比特（蓝，来自 S4.1）*/
+  node(ys[0],boxH,'#eff6ff',C_MAIN,'① 均衡软比特 (864 LLR)','来自 S4.1 相干解调',_dsPhase>=0);
+  vArrow(ys[0]+boxH,ys[1],_dsPhase>=1);
+
+  /* ② 第2层解扰（紫）*/
+  var a2=_dsPhase>=1;
+  node(ys[1],boxH,a2?C_SCRL:'#f1f5f9',C_SCR,'② 第二层解扰',a2?('钥匙 = ī_SSB = '+L2_SEG+' → 选第 '+L2_SEG+' 段 / 共8段'):'编码后比特层',a2);
+  /* 左侧钥匙①：DMRS 盲检 */
+  if(a2){
+    s+='<rect x="36" y="'+(ys[1]-4)+'" width="116" height="50" rx="8" fill="#fff" stroke="'+C_DMRS+'" stroke-width="1.6"/>';
+    s+=_t(94,ys[1]+10,'钥匙①',{a:'middle',s:9.5,w:800,f:'#b45309'});
+    s+=_t(94,ys[1]+26,'DMRS 盲检',{a:'middle',s:9,f:C_SEC});
+    s+=_t(94,ys[1]+39,'ī_SSB = '+L2_SEG,{a:'middle',s:9.5,w:800,f:'#b45309'});
+    s+='<line x1="152" y1="'+(ys[1]+boxH/2)+'" x2="'+(CXc-boxW/2-2)+'" y2="'+(ys[1]+boxH/2)+'" stroke="'+C_DMRS+'" stroke-width="1.6" marker-end="url(#dsAr)" stroke-dasharray="3 2"/>';
+  }
+  vArrow(ys[1]+boxH,ys[2],_dsPhase>=2);
+
+  /* ③ Polar 译码盒（折叠，蓝）*/
+  var a3=_dsPhase>=2, polH=68;
+  s+='<rect x="'+(CXc-boxW/2)+'" y="'+ys[2]+'" width="'+boxW+'" height="'+polH+'" rx="9" fill="'+(a3?'#eff6ff':'#f1f5f9')+'" stroke="'+C_MAIN+'" stroke-width="'+(a3?2:1.4)+'"'+(a3?'':' opacity="0.55"')+' stroke-dasharray="6 3"/>';
+  s+=_t(CXc,ys[2]+16,'速率解匹配 + Polar SCL 译码',{a:'middle',s:10.5,w:800,f:a3?C_MAIN:'#94a3b8'});
+  s+=_t(CXc,ys[2]+33,'［详见 S4.3，此处折叠］',{a:'middle',s:8.5,st:1,f:a3?C_SEC:'#b9c0cb'});
+  /* 译出 32-bit 载荷条，高亮「未扰孤岛」3 bit */
+  if(a3){
+    var pbX=CXc-128, pbY=ys[2]+44, cellW=256/16, pbH=16;
+    for(var bi=0;bi<16;bi++){            // 示意 16 格代表 32bit（每格 2bit）
+      var island=(bi===2||bi===3);       // 示意：SFN 2/3位 + 半帧 落这附近
+      var fc=island?C_ANSL:'#dbeafe', sc=island?C_ANS:C_MAIN;
+      s+='<rect x="'+(pbX+bi*cellW).toFixed(1)+'" y="'+pbY+'" width="'+(cellW-0.6).toFixed(1)+'" height="'+pbH+'" fill="'+fc+'" stroke="'+sc+'" stroke-width="'+(island?1.6:0.6)+'"/>';
+    }
+    var isX=pbX+2*cellW;
+    s+=_t(isX+cellW,pbY-7,'未扰孤岛',{a:'middle',s:8.5,w:800,f:C_ANS});
+    if(_dsPhase>=3) s+='<rect x="'+(isX-1)+'" y="'+(pbY-2)+'" width="'+(2*cellW+2)+'" height="'+(pbH+4)+'" rx="2" fill="none" stroke="'+C_HI+'" stroke-width="1.8"><animate attributeName="opacity" values="1;0.3;1" dur="1s" repeatCount="indefinite"/></rect>';
+  }
+  vArrow(ys[2]+polH,ys[3],_dsPhase>=3);
+
+  /* ④ 第1层解扰（紫）*/
+  var a4=_dsPhase>=4;
+  node(ys[3],boxH,a4?C_SCRL:'#f1f5f9',C_SCR,'③ 第一层解扰',a4?('钥匙 = SFN 2/3位 = 11 → 选第 '+L1_SEG+' 段 / 共4段'):'编码前载荷层',_dsPhase>=3);
+  /* 左侧钥匙②：读出的未扰位（自举）*/
+  if(_dsPhase>=3){
+    var ky=ys[3];
+    s+='<rect x="36" y="'+(ky-4)+'" width="116" height="50" rx="8" fill="#fff" stroke="'+C_ANS+'" stroke-width="1.6"/>';
+    s+=_t(94,ky+10,'钥匙②（自举）',{a:'middle',s:9,w:800,f:'#065f46'});
+    s+=_t(94,ky+26,'读出未扰明文',{a:'middle',s:9,f:C_SEC});
+    s+=_t(94,ky+39,'SFN 2/3位 = 11',{a:'middle',s:9.5,w:800,f:C_ANS});
+    s+='<line x1="152" y1="'+(ky+boxH/2)+'" x2="'+(CXc-boxW/2-2)+'" y2="'+(ky+boxH/2)+'" stroke="'+C_ANS+'" stroke-width="1.6" marker-end="url(#dsAr)" stroke-dasharray="3 2"/>';
+    /* 自举回环箭头：从未扰岛 → 钥匙② */
+    s+='<path d="M '+(CXc-boxW/2+30)+' '+(ys[2]+52)+' C 120 '+(ys[2]+90)+' 70 '+(ys[3]-30)+' 94 '+(ky-6)+'" fill="none" stroke="'+C_ANS+'" stroke-width="1.4" stroke-dasharray="2 3" opacity="0.7"/>';
+  }
+  vArrow(ys[3]+boxH,ys[4],a4);
+
+  /* ⑤ 干净 MIB（绿）*/
+  node(ys[4],boxH,a4?C_ANSL:'#f1f5f9',C_ANS,'④ 干净 32-bit 载荷',a4?'交给 S4.4 解析 MIB + 拼接 SFN':'',a4);
+
+  /* 右侧：TX 镜像小注（夹心示意）*/
+  s+='<rect x="476" y="70" width="210" height="316" rx="10" fill="#fff" stroke="#ddd6fe" stroke-width="1.2"/>';
+  s+=_t(581,88,'TX 编码顺序（镜像）',{a:'middle',s:10,w:800,f:C_SCRD});
+  var txSteps=[
+    ['MIB 32-bit 载荷',C_MAIN],
+    ['↓ 第1层扰码（按 SFN 2/3位）',C_SCR],
+    ['↓ +CRC24 → Polar 编码',C_MAIN],
+    ['↓ 速率匹配 → 864',C_MAIN],
+    ['↓ 第2层扰码（按 ī_SSB）',C_SCR],
+    ['↓ QPSK → 映射到 SSB',C_MAIN]
+  ];
+  txSteps.forEach(function(t,i){
+    var ty=110+i*44;
+    var isS=(t[1]===C_SCR);
+    s+='<rect x="490" y="'+ty+'" width="182" height="34" rx="7" fill="'+(isS?C_SCRL:'#eff6ff')+'" stroke="'+t[1]+'" stroke-width="'+(isS?1.8:1)+'"/>';
+    s+=_t(581,ty+17,t[0],{a:'middle',s:8.8,w:isS?800:600,f:isS?C_SCRD:C_MAIND});
+  });
+  s+=_t(581,378,'两层扰码（紫）夹住编码',{a:'middle',s:8.5,st:1,f:C_SCRD});
+
+  /* 底注 */
+  s+='<rect x="40" y="404" width="424" height="58" rx="9" fill="#fff" stroke="#ddd6fe" stroke-width="1.2"/>';
+  s+=_t(252,422,'自举闭环：那 3 个未扰比特一物二用',{a:'middle',s:10,w:800,f:C_SCRD});
+  s+=_t(252,440,'既是被直接读出的「明文岛」，又是第一层解扰的「选段钥匙」',{a:'middle',s:9,f:C_SEC});
+  s+=_t(252,454,'→ 化解「要解扰先知 SFN、要知 SFN 先解扰」的死循环',{a:'middle',s:9,w:700,f:C_ANS});
+  s+='</svg>';
+
+  var ctrl='<div class="ctrl-bar">'+
+    '<button class="case-btn on" onclick="dsRun()">▶ 演示自举解扰</button>'+
+    '<button class="case-btn" onclick="dsReset()">↺ 复位</button>'+
+    '<span style="width:1px;height:18px;background:var(--border);"></span>'+
+    '<span style="font-family:var(--font-mono);font-size:11px;color:var(--text-mut);">L1段='+L1_SEG+' · L2段='+L2_SEG+' · M=29(FR1)</span>'+
+    '</div>';
+  return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:14px;">'+ctrl+s+'</div>';
+}
+function _dsVC(){ return document.getElementById('vizContainer'); }
+function _dsRe(){ var v=_dsVC(); if(v) v.innerHTML=renderDescramble(); }
+function _dsStop(){ if(_dsTid){ clearInterval(_dsTid); _dsTid=null; } }
+function dsReset(){ _dsStop(); _dsPhase=0; _dsRe(); }
+function dsRun(){
+  _dsStop(); _dsPhase=0; _dsRe();
+  var seq=[
+    '[PHY] 第二层解扰：钥匙 = DMRS 盲检 ī_SSB = '+L2_SEG+' → 选第 '+L2_SEG+' 段。',
+    '[PHY] 速率解匹配 + Polar 译码 → 32-bit 载荷（仍带第一层扰码）。',
+    '[DATA] 读出未扰明文岛：SFN 第2/3位 = 11，半帧位 = 0。',
+    '[PHY] 第一层解扰：钥匙 = SFN 2/3位 = 11 → 选第 '+L1_SEG+' 段 → 还原完整 MIB。'
+  ];
+  _dsTid=setInterval(function(){
+    if(_dsPhase>=4){ _dsStop(); return; }
+    _dsPhase++; _dsRe();
+    if(seq[_dsPhase-1]) Engine.LogEngine.inject(seq[_dsPhase-1]);
+  },950);
+  Engine.addTimer(_dsTid);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   S4.2 · Polar SCL 译码（极化冻结图 + 路径剪枝 + CRC 选路）
+   ═══════════════════════════════════════════════════════════ */
+var _pPhase=0, _pTid=null;   // 0 idle, 1 极化扫入, 2 路径树, 3 CRC锁定
+var P_X0=52, P_W=620, P_Y=86, P_BARH=60;   // 极化条
+/* 路径树几何：4 层，左→右 */
+var TREE=(function(){
+  var levels=[1,2,4,8,8], xs=[], cy=300, lx0=120, lw=440;
+  var nodes=[]; // {lvl, i, x, y, alive}
+  // 存活路（绿）的节点链：固定一条
+  var survivor=[0,1,2,5,5];
+  for(var L=0;L<levels.length;L++){
+    var n=levels[L], x=lx0+lw*L/(levels.length-1);
+    for(var i=0;i<n;i++){
+      var y=cy + (i-(n-1)/2)*(118/Math.max(n,2));
+      nodes.push({L:L,i:i,x:x,y:y});
+    }
+  }
+  return {levels:levels,nodes:nodes,survivor:survivor,lx0:lx0,lw:lw,cy:cy};
+})();
+function _pNode(L,i){ return TREE.nodes.find(function(n){return n.L===L&&n.i===i;}); }
+function renderPolar(){
+  var s=_svgOpen('pbg','#eff6ff','#e0ecff');
+  s+=_t(360,34,'Polar 译码：冻结位免费先验 + SCL 列表 + CRC 选路',{a:'middle',s:12.5,w:700,f:C_MAIND});
+
+  /* ── 极化冻结图（128 段下采样代表 512 子信道）── */
+  s+=_t(P_X0,P_Y-14,'512 条子信道按可靠度极化',{s:10,w:700,f:C_MAIND});
+  s+=_t(P_X0+P_W,P_Y-14,'低可靠 ← → 高可靠',{a:'end',s:9,f:C_SEC});
+  var cw=P_W/128, lim=(_pPhase>=1)?128:0;
+  if(_pPhase===1) lim=Math.min(128,Math.floor(_pScan));
+  for(var i=0;i<128;i++){
+    var shown=(_pPhase>=2)||(i<lim);
+    if(!shown) continue;
+    var info=SEG128[i];                       // 0..4 个信息位
+    var isInfo=info>0;
+    var col=isInfo?C_MAIN:C_GREY;
+    var op=isInfo?(0.45+0.55*info/4):0.5;
+    var h=isInfo?(P_BARH*(0.4+0.6*info/4)):(P_BARH*0.32);
+    s+='<rect x="'+(P_X0+i*cw).toFixed(2)+'" y="'+(P_Y+P_BARH-h).toFixed(1)+'" width="'+(cw-0.4).toFixed(2)+'" height="'+h.toFixed(1)+'" fill="'+col+'" opacity="'+op.toFixed(2)+'"/>';
+  }
+  s+='<line x1="'+P_X0+'" y1="'+(P_Y+P_BARH)+'" x2="'+(P_X0+P_W)+'" y2="'+(P_Y+P_BARH)+'" stroke="#cbd5e1" stroke-width="1"/>';
+  /* 扫描线 */
+  if(_pPhase===1){
+    var sx=P_X0+Math.min(lim,128)*cw;
+    s+='<line x1="'+sx.toFixed(1)+'" y1="'+P_Y+'" x2="'+sx.toFixed(1)+'" y2="'+(P_Y+P_BARH)+'" stroke="'+C_HI+'" stroke-width="1" opacity="0.5"/>';
+  }
+  /* 图例 */
+  if(_pPhase>=2){
+    s+='<rect x="'+(P_X0)+'" y="'+(P_Y+P_BARH+12)+'" width="13" height="11" fill="'+C_GREY+'" opacity="0.55"/>';
+    s+=_t(P_X0+19,P_Y+P_BARH+17.5,'冻结位 456（恒 0，收发都知道）',{s:9,f:C_SEC});
+    s+='<rect x="'+(P_X0+230)+'" y="'+(P_Y+P_BARH+12)+'" width="13" height="11" fill="'+C_MAIN+'"/>';
+    s+=_t(P_X0+249,P_Y+P_BARH+17.5,'信息位 56（放最可靠子信道）',{s:9,w:700,f:C_MAIN});
+    s+=_t(P_X0+P_W,P_Y+P_BARH+17.5,'β-展开排序',{a:'end',s:8.5,st:1,f:C_MUT});
+  }
+
+  /* ── 速率解匹配小标 ── */
+  s+='<rect x="'+P_X0+'" y="194" width="620" height="26" rx="6" fill="#fff" stroke="#bfdbfe" stroke-width="1"/>';
+  s+=_t(360,207,'进译码器前：速率解匹配  864 LLR → 512 母码（E>N 发端重复，收端把重复位 LLR 相加得增益）',{a:'middle',s:9.5,w:700,f:C_MAIND});
+
+  /* ── SCL 路径树 ── */
+  if(_pPhase>=2){
+    s+=_t(360,242,'SCL 列表译码：每个信息位同时留 0/1 假设，裁到 L=8 条最优路径',{a:'middle',s:10.5,w:700,f:C_MAIND});
+    var locked=(_pPhase>=3);
+    var survSet={}; TREE.survivor.forEach(function(si,L){ survSet[L+'-'+si]=true; });
+    /* 连线 */
+    for(var L2=0;L2<TREE.levels.length-1;L2++){
+      var n0=TREE.levels[L2], n1=TREE.levels[L2+1];
+      for(var a=0;a<n0;a++){ for(var b=0;b<n1;b++){
+        /* 简化：每个父节点向两个子节点分叉（b 在 [2a,2a+1] 内）或全连(裁剪后) */
+        var connect = (n1>=n0)?(Math.floor(b/Math.max(1,n1/n0))===a):(a%Math.max(1,n0/n1)===0 && Math.floor(a/Math.max(1,n0/n1))===b);
+        if(n1>n0) connect=(Math.floor(b/2)===a);
+        else connect=(a===b);
+        if(!connect) continue;
+        var p0=_pNode(L2,a), p1=_pNode(L2+1,b);
+        if(!p0||!p1) continue;
+        var onSurv=locked && survSet[L2+'-'+a] && survSet[(L2+1)+'-'+b];
+        s+='<line x1="'+p0.x+'" y1="'+p0.y+'" x2="'+p1.x+'" y2="'+p1.y+'" stroke="'+(onSurv?C_ANS:(locked?'#e2e8f0':C_GREY))+'" stroke-width="'+(onSurv?2.4:1)+'" opacity="'+(onSurv?1:(locked?0.4:0.55))+'"/>';
+      }}
+    }
+    /* 节点 */
+    TREE.nodes.forEach(function(nd){
+      var onSurv=locked && survSet[nd.L+'-'+nd.i];
+      var col=onSurv?C_ANS:(locked?'#cbd5e1':C_MAIN);
+      s+='<circle cx="'+nd.x+'" cy="'+nd.y+'" r="'+(onSurv?5.5:4)+'" fill="'+col+'" opacity="'+(onSurv?1:(locked?0.5:0.8))+'"/>';
+    });
+    /* PM 劣汰标签：锁定时，被剪枝（非幸存）的末两层节点旁闪红字 */
+    if(locked){
+      var pruneTag=[[3,3],[3,6],[4,0],[4,7]];   // 选几个被剪的代表节点
+      pruneTag.forEach(function(pt,k){
+        var nd=_pNode(pt[0],pt[1]);
+        if(nd){
+          s+='<g opacity="0"><animate attributeName="opacity" values="0;1;1;0.7" dur="0.9s" begin="'+(0.15*k)+'s" fill="freeze"/>';
+          s+='<rect x="'+(nd.x+8)+'" y="'+(nd.y-8)+'" width="46" height="15" rx="4" fill="#fef2f2" stroke="'+C_HI+'" stroke-width="0.8"/>';
+          s+=_t(nd.x+31,nd.y-0.5,'PM 劣汰',{a:'middle',s:8,w:800,f:C_HI});
+          s+='</g>';
+        }
+      });
+    }
+    s+=_t(TREE.lx0,400,'起点',{a:'middle',s:9,f:C_SEC});
+    s+=_t(TREE.lx0+TREE.lw,400,'L=8 幸存',{a:'middle',s:9,f:C_SEC});
+
+    /* CRC 裁判框 */
+    var crcX=600, crcY=276, crcW=92, crcH=86;
+    s+='<rect x="'+crcX+'" y="'+crcY+'" width="'+crcW+'" height="'+crcH+'" rx="9" fill="'+(locked?C_ANSL:'#fff')+'" stroke="'+(locked?C_ANS:C_MUT)+'" stroke-width="'+(locked?2.5:1.4)+'"/>';
+    s+=_t(crcX+crcW/2,crcY+18,'CRC24',{a:'middle',s:11,w:800,f:locked?C_ANS:C_MAIND});
+    s+=_t(crcX+crcW/2,crcY+36,'裁判',{a:'middle',s:9,f:C_SEC});
+    if(locked){
+      s+=_t(crcX+crcW/2,crcY+56,'✓ 通过',{a:'middle',s:12,w:800,f:C_ANS});
+      s+=_t(crcX+crcW/2,crcY+72,'唯一正确路',{a:'middle',s:8.5,f:'#047857'});
+      /* 红高光环（锁定那一刻，全屏唯一红）*/
+      var win=_pNode(4,TREE.survivor[4]);
+      if(win) s+='<circle cx="'+win.x+'" cy="'+win.y+'" r="11" fill="none" stroke="'+C_HI+'" stroke-width="2"/>';
+    } else {
+      s+=_t(crcX+crcW/2,crcY+58,'8 选 1',{a:'middle',s:9.5,w:700,f:C_SEC});
+    }
+    /* 幸存路 → CRC 连线 */
+    var wnode=_pNode(4,TREE.survivor[4]);
+    if(wnode){
+      s+='<line x1="'+(wnode.x+6)+'" y1="'+wnode.y+'" x2="'+crcX+'" y2="'+(crcY+crcH/2)+'" stroke="'+(locked?C_ANS:C_MUT)+'" stroke-width="'+(locked?2:1)+'" stroke-dasharray="'+(locked?'0':'3 2')+'" opacity="0.8"/>';
+    }
+  }
+
+  /* ── 底：结果带 ── */
+  if(_pPhase>=3){
+    s+='<rect x="150" y="414" width="420" height="48" rx="10" fill="'+C_ANSL+'" stroke="'+C_ANS+'" stroke-width="2"/>';
+    s+=_t(360,430,'CRC 通过 → 56 bit 译出',{a:'middle',s:12,w:800,f:C_ANS});
+    s+=_t(360,449,'拆为 32 bit 载荷 + 24 bit CRC → 交给 S4.3 解析',{a:'middle',s:10,w:700,f:C_MAIND});
+  } else if(_pPhase>=1){
+    s+=_t(360,438,'每条路径维护累积路径度量(PM)：候选超 L=8 即剪掉 PM 最差路；CRC 在 8 条幸存里选唯一通过路',{a:'middle',s:9.5,st:1,f:C_SEC});
+  }
+  s+='</svg>';
+
+  var ctrl='<div class="ctrl-bar">'+
+    '<button class="case-btn on" onclick="pRun()">▶ 译码</button>'+
+    '<button class="case-btn" onclick="pReset()">↺ 复位</button>'+
+    '<span style="width:1px;height:18px;background:var(--border);"></span>'+
+    '<span style="font-family:var(--font-mono);font-size:11px;color:var(--text-mut);">K=56 · N=512 · E=864 · L=8</span>'+
+    '</div>';
+  return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:14px;">'+ctrl+s+'</div>';
+}
+var _pScan=0;
+function _pVC(){ return document.getElementById('vizContainer'); }
+function _pRe(){ var v=_pVC(); if(v) v.innerHTML=renderPolar(); }
+function _pStop(){ if(_pTid){ clearInterval(_pTid); _pTid=null; } }
+function pReset(){ _pStop(); _pPhase=0; _pScan=0; _pRe(); }
+function pRun(){
+  _pStop(); _pPhase=1; _pScan=0; _pRe();
+  var _pWait=0;   // phase 2 等待计数器，给用户时间观察 SCL 全树
+  _pTid=setInterval(function(){
+    if(_pPhase===1){
+      _pScan+=11;
+      if(_pScan>=128){ _pPhase=2; _pRe(); _pWait=0;
+        Engine.LogEngine.inject('[PHY] 极化完成：456 冻结位 / 56 信息位，SCL 列表译码展开 L=8 路径。'); }
+      else _pRe();
+    } else if(_pPhase===2){
+      _pWait++;
+      if(_pWait>=18){   // 停留 ~3s（18×170ms），让用户看清全树结构
+        _pPhase=3; _pStop(); _pRe();
+        Engine.LogEngine.inject('[PHY] ✓ CRC24 辅助选路成功：8 条幸存路径中唯一通过校验，56 bit 译出。');
+      }
+    }
+  },170);
+  Engine.addTimer(_pTid);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   S4.3 · MIB 解析 + SFN 拼接
+   ═══════════════════════════════════════════════════════════ */
+var _mibLocked=false, _mibPhase=0, _mibTid=null;
+/* 32-bit 字段（逻辑顺序，解交织后）：[名, 位数, 比特串, 颜色组] grp: m=MIB蓝, t=时间位琥珀 */
+var MIB_FIELDS=[
+  ['choice',1,'0','m'],
+  ['SFN[9:4]',6, (SFN_MSB6).toString(2).padStart(6,'0'),'sfnH'],
+  ['SCS',1,'1','m'],
+  ['k_SSB[3:0]',4,(KSSB&0xF).toString(2).padStart(4,'0'),'m'],
+  ['dmrsTypeA',1,'0','m'],
+  ['pdcch-CfgSIB1',8,'00010000','m'],
+  ['barred',1,'1','m'],
+  ['intraFreq',1,'0','m'],
+  ['spare',1,'0','m'],
+  ['SFN[3:0]',4,(SFN_LSB4).toString(2).padStart(4,'0'),'sfnL'],
+  ['HRF',1,'0','t'],
+  ['k_SSB[4]',1,((KSSB>>4)&1).toString(),'t'],
+  ['rsv',2,'00','t']
+];
+function _grpColor(g){ return g==='sfnH'?C_MAIN:(g==='sfnL'?C_DMRS:(g==='t'?C_DMRS:C_MAIN)); }
+function renderMIB(){
+  var s=_svgOpen('mbg','#eff6ff','#e0ecff');
+  s+=_t(360,32,'CRC 通过 → 拆 32 bit → 解析 MIB + 拼接 SFN',{a:'middle',s:12.5,w:700,f:C_MAIND});
+
+  /* ── 上：32-bit 比特带（按字段分段染色）── */
+  var BX=40, BW=640, BY=58, BH=40, totBits=32, bw=BW/totBits;
+  s+=_t(BX,BY-12,'32-bit PBCH 载荷',{s:9.5,w:700,f:C_MAIND});
+  s+=_t(BX+BW,BY-12,'24 bit BCH/MIB ┊ 8 bit 时间位',{a:'end',s:9,f:C_SEC});
+  var pos=0;
+  MIB_FIELDS.forEach(function(f){
+    var g=f[3], col=_grpColor(g), isT=(g==='t'||g==='sfnL');
+    var fx=BX+pos*bw, fwid=f[1]*bw;
+    s+='<rect x="'+fx.toFixed(1)+'" y="'+BY+'" width="'+(fwid-0.8).toFixed(1)+'" height="'+BH+'" rx="2" fill="'+col+'" opacity="'+(isT?0.85:0.16)+'" stroke="'+col+'" stroke-width="1"/>';
+    /* 比特 */
+    for(var b=0;b<f[1];b++){
+      s+=_t(fx+(b+0.5)*bw,BY+BH/2,f[2][b],{a:'middle',s:9,w:700,f:isT?'#fff':C_MAIND});
+    }
+    /* 字段名（小，旋转省略：直接放下方）*/
+    var nm=f[0];
+    if(f[1]>=2) s+=_t(fx+fwid/2,BY+BH+9,nm,{a:'middle',s:7.5,f:isT?'#b45309':C_SEC});
+    pos+=f[1];
+  });
+  /* 24/8 分隔 */
+  var splitX=BX+24*bw;
+  s+='<line x1="'+splitX+'" y1="'+(BY-4)+'" x2="'+splitX+'" y2="'+(BY+BH+14)+'" stroke="'+C_HI+'" stroke-width="1.5" stroke-dasharray="3 2"/>';
+
+  /* ── 中：SFN 拼接（高6位 + 低4位 → 10-bit 寄存器）── */
+  var asmY=170;
+  s+=_t(360,asmY-26,'★ SFN 拼接：高 6 位(藏 MIB) + 低 4 位(藏时间位) → 完整 10 bit',{a:'middle',s:11,w:800,f:C_MAIND});
+  /* 高6位块 */
+  var hX=120, hW=150, blkH=40;
+  s+='<rect x="'+hX+'" y="'+asmY+'" width="'+hW+'" height="'+blkH+'" rx="7" fill="'+C_MAIN+'" opacity="0.16" stroke="'+C_MAIN+'" stroke-width="2"/>';
+  s+=_t(hX+hW/2,asmY+14,'SFN[9:4] = '+SFN_MSB6.toString(2).padStart(6,'0'),{a:'middle',s:11,w:800,f:C_MAIND});
+  s+=_t(hX+hW/2,asmY+30,'高 6 位 · 来自 MIB ('+SFN_MSB6+')',{a:'middle',s:8.5,f:C_SEC});
+  /* + */
+  s+=_t(hX+hW+24,asmY+blkH/2,'+',{a:'middle',s:22,w:800,f:C_SEC});
+  /* 低4位块（琥珀）*/
+  var lX=hX+hW+48, lW=118;
+  s+='<rect x="'+lX+'" y="'+asmY+'" width="'+lW+'" height="'+blkH+'" rx="7" fill="'+C_DMRSL+'" stroke="'+C_DMRS+'" stroke-width="2"/>';
+  s+=_t(lX+lW/2,asmY+14,'SFN[3:0] = '+SFN_LSB4.toString(2).padStart(4,'0'),{a:'middle',s:11,w:800,f:'#b45309'});
+  s+=_t(lX+lW/2,asmY+30,'低 4 位 · 时间位 ('+SFN_LSB4+')',{a:'middle',s:8.5,f:'#92600c'});
+  /* = */
+  s+=_t(lX+lW+22,asmY+blkH/2,'=',{a:'middle',s:22,w:800,f:C_SEC});
+  /* 10-bit 寄存器（锁定后高光）*/
+  var rX=lX+lW+44, rW=190;
+  var regFill=_mibLocked?C_ANSL:'#fff', regStroke=_mibLocked?C_ANS:'#bfdbfe';
+  s+='<rect x="'+rX+'" y="'+(asmY-4)+'" width="'+rW+'" height="'+(blkH+8)+'" rx="8" fill="'+regFill+'" stroke="'+regStroke+'" stroke-width="'+(_mibLocked?2.5:1.5)+'"/>';
+  var full=SFN.toString(2).padStart(10,'0');
+  for(var bi=0;bi<10;bi++){
+    var cellX=rX+10+bi*((rW-20)/10);
+    var isHigh=bi<6;
+    s+=_t(cellX+((rW-20)/10)/2,asmY+10,full[bi],{a:'middle',s:11,w:800,f:isHigh?C_MAIND:'#b45309'});
+  }
+  s+=_t(rX+rW/2,asmY+30,'SFN = '+(_mibLocked?(SFN+'（十进制）'):'?'),{a:'middle',s:10.5,w:800,f:_mibLocked?C_ANS:C_SEC});
+  if(_mibLocked){
+    s+='<rect x="'+rX+'" y="'+(asmY-4)+'" width="'+rW+'" height="'+(blkH+8)+'" rx="8" fill="none" stroke="'+C_HI+'" stroke-width="1.5" opacity="0.0"><animate attributeName="opacity" values="1;0" dur="0.7s" begin="0s"/></rect>';
+  }
+  s+=_t(360,asmY+58,'(38 &lt;&lt; 4) | 6 = 608 + 6 = '+(_mibLocked?'614 ✓':'…'),{a:'middle',s:10,w:700,f:_mibLocked?C_ANS:C_MUT});
+
+  /* ── 底：MIB 字段解析卡 ── */
+  var pY=258;
+  s+=_t(360,pY-6,'MIB 字段解析（绿 = 已写入 NR_CTX）',{a:'middle',s:10.5,w:700,f:C_MAIND});
+  var rows=[
+    ['systemFrameNumber','SFN = 614', true],
+    ['half frame','前半帧 (HRF=0)', true],
+    ['subCarrierSpacingCommon','30 kHz', false],
+    ['ssb-SubcarrierOffset','k_SSB = 6', true],
+    ['dmrs-TypeA-Position','pos2', false],
+    ['pdcch-ConfigSIB1','0x10 → Stage 5', false],
+    ['cellBarred','notBarred（允许）', false],
+    ['intraFreqReselection','allowed', false]
+  ];
+  var colW=312, rowH=26, c0x=44, c1x=364, ry=pY+8;
+  for(var ri=0;ri<rows.length;ri++){
+    var rr=rows[ri], colIdx=ri%2, rowIdx=Math.floor(ri/2);
+    var rxp=(colIdx===0)?c0x:c1x, ryp=ry+rowIdx*(rowH+5);
+    var hl=rr[2]&&_mibLocked;
+    s+='<rect x="'+rxp+'" y="'+ryp+'" width="'+colW+'" height="'+rowH+'" rx="6" fill="'+(hl?C_ANSL:'#fff')+'" stroke="'+(hl?C_ANS:'#dbe4f0')+'" stroke-width="'+(hl?1.6:1)+'"/>';
+    s+=_t(rxp+12,ryp+rowH/2,rr[0],{s:9.5,f:C_SEC});
+    s+=_t(rxp+colW-12,ryp+rowH/2,rr[1],{a:'end',s:10,w:700,f:hl?C_ANS:C_MAIND});
+  }
+  /* ── 协议彩蛋：FR1/FR2 比特复用 ── */
+  var gtY=ry+4*(rowH+5)+6;   // 解析卡下方
+  s+='<rect x="44" y="'+gtY+'" width="632" height="56" rx="9" fill="#fffbeb" stroke="'+C_DMRS+'" stroke-width="1.4"/>';
+  s+='<rect x="44" y="'+gtY+'" width="92" height="56" rx="9" fill="'+C_DMRS+'" opacity="0.14"/>';
+  s+=_t(90,gtY+22,'⚡ 协议',{a:'middle',s:10,w:800,f:'#b45309'});
+  s+=_t(90,gtY+38,'彩蛋',{a:'middle',s:10,w:800,f:'#b45309'});
+  s+=_t(148,gtY+18,'同样这 8 个时间位里的 k_SSB[4]+2 保留位，FR1 / FR2 用途不同：',{s:9.5,w:800,f:C_SCRD});
+  s+=_t(148,gtY+34,'• FR1（Lmax=4/8，波束≤8）：DMRS 3 位已够标识 SSB index → 此处承载 k_SSB 第 5 位',{s:9,f:C_SEC});
+  s+=_t(148,gtY+49,'• FR2（Lmax=64，波束达64）：k_SSB 仅需 4 位 → 此处改征用，拼 SSB index 高 3 位！',{s:9,w:700,f:'#b45309'});
+  s+='</svg>';
+
+  var ctrl='<div class="ctrl-bar">'+
+    '<button class="case-btn on" onclick="mibRun()">▶ 演示 SFN 拼接 + 写入</button>'+
+    '<button class="case-btn" onclick="mibReset()">↺ 复位</button>'+
+    '</div>';
+  return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:12px;">'+ctrl+s+'</div>';
+}
+function _mibVC(){ return document.getElementById('vizContainer'); }
+function _mibRe(){ var v=_mibVC(); if(v) v.innerHTML=renderMIB(); }
+function mibReset(){ if(_mibTid){clearTimeout(_mibTid);_mibTid=null;} _mibLocked=false; _mibRe(); }
+function mibRun(){
+  if(_mibTid){clearTimeout(_mibTid);_mibTid=null;}
+  _mibLocked=false; _mibRe();
+  Engine.LogEngine.inject('[DATA] 拆分 32 bit：24 bit MIB + 8 bit 时间位，开始解析…');
+  _mibTid=setTimeout(function(){
+    _mibLocked=true;
+    /* 先写非顶栏字段，最后 ctxSet(kssb) 触发单次重绘+顶栏同步 */
+    if(window.NR_CTX){
+      window.NR_CTX.sfn_offset=SFN; window.NR_CTX.hrf=HRF; window.NR_CTX.ssb_index=SSB_IDX;
+      window.NR_CTX.mib={ sfn:SFN, scsCommon:30, kssb:KSSB, dmrsTypeA:'pos2',
+                          pdcchConfigSib1:16, cellBarred:'notBarred', intraFreq:'allowed' };
+    }
+    Engine.LogEngine.inject('[DATA] SFN 拼接：高6位('+SFN_MSB6+') ⊕ 低4位('+SFN_LSB4+') → SFN = '+SFN+'。');
+    Engine.LogEngine.inject('[DATA] 解析 MIB：SCS=30kHz, k_SSB='+KSSB+', cellBarred=notBarred(允许驻留)。');
+    Engine.ctxSet('kssb', KSSB);
+    Engine.LogEngine.inject('[SUCCESS] MIB 解码完成，SFN/半帧/k_SSB/配置写入 NR_CTX → 通往 Stage 5。');
+    _mibRe();
+  },1100);
+  Engine.addTimer(_mibTid);
+}
+
+/* ─── Viz Router ─────────────────────────────────────────── */
+Engine.renderVizSVG = function(subIdx){
+  if(subIdx===0) return renderS4Discuss();
+  if(subIdx===1) return renderChEstFull();
+  if(subIdx===2) return renderDescramble();
+  if(subIdx===3) return renderPolar();
+  if(subIdx===4) return renderMIB();
+  return renderS4Discuss();
+};
+Engine.onAfterRender = function(subIdx){
+  if(subIdx===1){ _ceApplied=false; _ceInterp=false; _ceRot(); }
+  if(subIdx===2){ dsReset(); dsRun(); }
+  if(subIdx===3){ pReset(); pRun(); }
+  if(subIdx===4){ mibReset(); mibRun(); }
+};
+Engine.onStageExit = function(){
+  if(_ceTid){ clearInterval(_ceTid); _ceTid=null; }
+  if(_dsTid){ clearInterval(_dsTid); _dsTid=null; }
+  if(_pTid){ clearInterval(_pTid); _pTid=null; }
+  if(_mibTid){ clearTimeout(_mibTid); _mibTid=null; }
+};
+
+Engine.boot({ stageIdx: 4 });
+</script>
+</body>
+</html>

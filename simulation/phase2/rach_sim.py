@@ -28,6 +28,10 @@ from enum import Enum, auto
 from typing import Optional
 import random
 
+# 中文字体
+plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'Noto Sans SC', 'DejaVu Sans']
+plt.rcParams['axes.unicode_minus'] = False
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 全局主题
 # ─────────────────────────────────────────────────────────────────────────────
@@ -55,7 +59,8 @@ def ax_style(ax):
     ax.yaxis.label.set_color(DARK_MUTED)
 
 import os
-OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'output')
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

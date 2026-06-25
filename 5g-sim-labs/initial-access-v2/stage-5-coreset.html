@@ -1,0 +1,614 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Stage 5 · CORESET#0 盲检</title>
+<link rel="stylesheet" href="design-system.css">
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['$','$'], ['\\(','\\)']] },
+  options: { skipHtmlTags: ['script','noscript','style','textarea'] }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+<style>
+.case-btn { padding:4px 10px;border-radius:5px;font-size:11px;font-family:var(--font-mono);
+            font-weight:700;cursor:pointer;border:1.5px solid var(--border);
+            background:var(--surface);color:var(--text-sec);transition:all .15s; }
+.case-btn.on { background:#4f46e5;border-color:#4f46e5;color:white; }
+.case-btn.warn-on { background:#dc2626;border-color:#dc2626;color:white; }
+.ctrl-bar { display:flex;align-items:center;gap:12px;background:var(--surface);
+            border:1px solid var(--border);border-radius:8px;padding:7px 14px;flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="stage-data.js"></script>
+<script src="engine.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════
+   Stage 5 · CORESET#0 盲检 · 5 sub-steps (0..4)
+   配色：靛蓝 #4f46e5(主) / 深靛 #3730a3 / 浅靛 #eef2ff
+        / 答案绿 #059669 / 对照灰 #94a3b8 / 高光红 #dc2626 / 琥珀 #d97706(钥匙)
+   ═══════════════════════════════════════════════════════════ */
+var C_MAIN='#4f46e5', C_MAIND='#3730a3', C_MAINL='#eef2ff',
+    C_KEY='#d97706', C_KEYL='#fff7ed',
+    C_ANS='#059669', C_ANSL='#d1fae5',
+    C_HI='#dc2626', C_GREY='#94a3b8',
+    C_SEC='#475569', C_MUT='#94a3b8', C_SSB='#0891b2';
+
+/* ── 公共文本助手（与 Stage 3 一致）── */
+function _t(x,y,t,o){ o=o||{};
+  return '<text x="'+x+'" y="'+y+'" '+(o.a?'text-anchor="'+o.a+'" ':'')+
+    'dominant-baseline="central" font-family="SF Mono,Consolas,monospace" '+
+    'font-size="'+(o.s||10)+'" '+(o.w?'font-weight="'+o.w+'" ':'')+
+    'fill="'+(o.f||'#1e293b')+'"'+(o.st?' font-style="italic"':'')+
+    (o.id?' id="'+o.id+'"':'')+(o.op!=null?' opacity="'+o.op+'"':'')+'>'+t+'</text>';
+}
+
+/* ── 上游 NR_CTX（带兜底，便于独立打开本页）── */
+function _ctx(k,d){ return (window.NR_CTX&&window.NR_CTX[k]!=null)?window.NR_CTX[k]:d; }
+var CFG_PCI = _ctx('pci',337);
+var CFG_KSSB= _ctx('kssb',6);
+var CFG_PDCCH = ((window.NR_CTX&&window.NR_CTX.mib&&window.NR_CTX.mib.pdcchConfigSib1!=null)
+                 ? window.NR_CTX.mib.pdcchConfigSib1 : 0x10);
+var CSET0_IDX = (CFG_PDCCH>>4)&0xF;   // =1
+var SS0_IDX   =  CFG_PDCCH    &0xF;   // =0
+/* Table 13-4 派生（已 Python 验证）*/
+var CSET_RB=24, CSET_SYM=2, CSET_OFF=1, CSET_PAT=1;
+var N_CCE = (CSET_RB*CSET_SYM)/6;     // =8
+
+/* ═══════════════════════════════════════════════════════════
+   S5.0 · 理论黑板（一把钥匙 → 自举出 SIB1 入口）
+   ═══════════════════════════════════════════════════════════ */
+function renderS5Discuss(){
+  var s='<svg viewBox="0 0 720 495" width="100%" height="100%" style="display:block;" xmlns="http://www.w3.org/2000/svg">';
+  s+='<defs><linearGradient id="s5bg" x1="0" y1="0" x2="0" y2="1">'+
+     '<stop offset="0" stop-color="#f5f6ff"/><stop offset="1" stop-color="#eef2ff"/></linearGradient>'+
+     '<marker id="s5ar" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1L7 4L1 7Z" fill="'+C_MAIN+'"/></marker>'+
+     '<marker id="s5arK" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="5" markerHeight="5" orient="auto"><path d="M1 1L7 4L1 7Z" fill="'+C_KEY+'"/></marker></defs>';
+  s+='<rect x="14" y="14" width="692" height="467" rx="14" fill="url(#s5bg)" stroke="#c7d2fe" stroke-width="1.5"/>';
+  s+='<rect x="14" y="14" width="692" height="44" rx="14" fill="'+C_MAIN+'" opacity="0.10"/>';
+  s+=_t(360,36,'MIB 给一把 8-bit 钥匙 → UE 自举出「监听 SIB1 调度令」的窗口',{a:'middle',s:13,w:700,f:C_MAIND});
+
+  /* 钥匙 → 两把锁 */
+  s+='<rect x="270" y="74" width="180" height="44" rx="9" fill="'+C_KEYL+'" stroke="'+C_KEY+'" stroke-width="2"/>';
+  s+=_t(360,90,'pdcch-ConfigSIB1',{a:'middle',s:11,w:800,f:'#b45309'});
+  s+=_t(360,106,'0x10  (MIB 8-bit)',{a:'middle',s:10.5,w:700,f:'#92400e'});
+
+  /* 左锁：CORESET（在哪） */
+  s+='<line x1="320" y1="118" x2="180" y2="150" stroke="'+C_MAIN+'" stroke-width="1.6" marker-end="url(#s5ar)"/>';
+  s+='<rect x="40" y="150" width="280" height="150" rx="10" fill="#fff" stroke="'+C_MAIN+'" stroke-width="2"/>';
+  s+='<rect x="40" y="150" width="280" height="32" rx="10" fill="'+C_MAIN+'" opacity="0.12"/>';
+  s+=_t(180,166,'高 4 位 → controlResourceSetZero',{a:'middle',s:10.5,w:700,f:C_MAIND});
+  s+=_t(180,196,'查 Table 13-4 → 「在哪监听」',{a:'middle',s:11,w:700,f:C_SEC});
+  s+='<rect x="58" y="212" width="244" height="74" rx="7" fill="'+C_MAINL+'"/>';
+  s+=_t(180,230,'CORESET#0 = 24 RB × 2 symbol',{a:'middle',s:11,w:800,f:C_MAIND});
+  s+=_t(180,250,'频域相对 SSB，offset = 1 RB',{a:'middle',s:10,f:C_SEC});
+  s+=_t(180,270,'带宽 8.64 MHz → 8 个 CCE 资源池',{a:'middle',s:10,f:C_SEC});
+
+  /* 右锁：SearchSpace（何时） */
+  s+='<line x1="400" y1="118" x2="540" y2="150" stroke="'+C_KEY+'" stroke-width="1.6" marker-end="url(#s5arK)"/>';
+  s+='<rect x="400" y="150" width="280" height="150" rx="10" fill="#fff" stroke="'+C_KEY+'" stroke-width="2"/>';
+  s+='<rect x="400" y="150" width="280" height="32" rx="10" fill="'+C_KEY+'" opacity="0.12"/>';
+  s+=_t(540,166,'低 4 位 → searchSpaceZero',{a:'middle',s:10.5,w:700,f:'#b45309'});
+  s+=_t(540,196,'查 Table 13-11 → 「何时监听」',{a:'middle',s:11,w:700,f:C_SEC});
+  s+='<rect x="418" y="212" width="244" height="74" rx="7" fill="'+C_KEYL+'"/>';
+  s+=_t(540,230,'监测周期 / slot / 起始符号',{a:'middle',s:11,w:800,f:'#b45309'});
+  s+=_t(540,250,'O=0, M=1, 首符号 0',{a:'middle',s:10,f:C_SEC});
+  s+=_t(540,270,'→ 偶帧 slot 0 符号 0 开始监听',{a:'middle',s:10,f:C_SEC});
+
+  /* 底：自举诚实点 */
+  s+='<rect x="40" y="318" width="640" height="148" rx="10" fill="#fff" stroke="#c7d2fe" stroke-width="1.2"/>';
+  s+=_t(360,338,'自举锚定：CORESET#0 直接挂在 SSB 上，不依赖 Point A',{a:'middle',s:12,w:800,f:C_MAIND});
+  s+='<rect x="58" y="354" width="288" height="98" rx="8" fill="#fef2f2" stroke="#fecaca" stroke-width="1"/>';
+  s+=_t(202,372,'死循环：要定位 CORESET 的全局坐标',{a:'middle',s:10,w:700,f:'#991b1b'});
+  s+=_t(202,390,'需 Point A（offsetToPointA）',{a:'middle',s:10,f:'#7f1d1d'});
+  s+=_t(202,408,'但 offsetToPointA 藏在 SIB1 里',{a:'middle',s:10,f:'#7f1d1d'});
+  s+=_t(202,426,'而 SIB1 正等着 CORESET 去解…',{a:'middle',s:10,f:'#7f1d1d'});
+  s+=_t(202,443,'先有鸡 还是 先有蛋？',{a:'middle',s:10,w:700,st:1,f:'#991b1b'});
+  s+=_t(363,403,'→',{a:'middle',s:24,w:800,f:C_ANS});
+  s+='<rect x="380" y="354" width="288" height="98" rx="8" fill="'+C_ANSL+'" stroke="'+C_ANS+'" stroke-width="1.5"/>';
+  s+=_t(524,372,'3GPP 解法：CORESET 位置',{a:'middle',s:10.5,w:800,f:C_ANS});
+  s+=_t(524,390,'用「相对 SSB 的 RB 偏移」给出',{a:'middle',s:10,w:700,f:'#047857'});
+  s+=_t(524,408,'+ 叠加 k_SSB=6 子载波精对齐',{a:'middle',s:10,f:'#047857'});
+  s+=_t(524,428,'SSB 是 UE 唯一已知锚点',{a:'middle',s:10,f:'#047857'});
+  s+=_t(524,445,'→ 死循环化解，够用就好',{a:'middle',s:10,w:700,f:C_ANS});
+
+  s+='</svg>';
+  return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;padding-top:6px;">'+s+'</div>';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   S5.1 · 双查表「开锁」动画
+   ═══════════════════════════════════════════════════════════ */
+var _t1Phase=0, _t1Tid=null;   // 0=待开锁 1=劈位 2=左表高亮 3=右表高亮 4=汇总
+function renderTableLookup(){
+  var ph=_t1Phase;
+  var s='<svg viewBox="0 0 720 495" width="100%" height="100%" style="display:block;" xmlns="http://www.w3.org/2000/svg">';
+  s+='<defs><linearGradient id="t1bg" x1="0" y1="0" x2="0" y2="1">'+
+     '<stop offset="0" stop-color="#f5f6ff"/><stop offset="1" stop-color="#eef2ff"/></linearGradient></defs>';
+  s+='<rect x="14" y="14" width="692" height="467" rx="14" fill="url(#t1bg)" stroke="#c7d2fe" stroke-width="1.5"/>';
+  s+=_t(360,34,'一把钥匙开两把锁：0x10 拆成两个 4-bit 索引',{a:'middle',s:12.5,w:700,f:C_MAIND});
+
+  /* 顶部钥匙：8 bit 0001 0000 */
+  var bits=[0,0,0,1,0,0,0,0];
+  var bx0=276, bw=21, by=54;
+  for(var i=0;i<8;i++){
+    var hi=(i<4);
+    var split=(ph>=1);
+    var gap=(split&&i>=4)?14:0;
+    var x=bx0+i*bw+gap;
+    var col=hi?C_MAIN:C_KEY;
+    var on=bits[i]===1;
+    s+='<rect x="'+x+'" y="'+by+'" width="'+(bw-3)+'" height="24" rx="3" '+
+       'fill="'+(on?col:'#fff')+'" stroke="'+col+'" stroke-width="1.5"/>';
+    s+=_t(x+(bw-3)/2,by+12,bits[i],{a:'middle',s:11,w:800,f:on?'#fff':col});
+  }
+  if(ph>=1){
+    s+=_t(276+2*bw-3,by+40,'cset0 = 1',{a:'middle',s:9.5,w:700,f:C_MAIN});
+    s+=_t(276+6*bw-3+14,by+40,'ss0 = 0',{a:'middle',s:9.5,w:700,f:C_KEY});
+  } else {
+    s+=_t(360,by+38,'点击「开锁」→ 沿中线劈成高/低两半',{a:'middle',s:10,st:1,f:C_SEC});
+  }
+
+  /* 左表 Table 13-4 */
+  var LX=40, LW=312, LY=108;
+  s+='<rect x="'+LX+'" y="'+LY+'" width="'+LW+'" height="220" rx="9" fill="#fff" stroke="'+C_MAIN+'" stroke-width="'+(ph>=2?2.5:1.3)+'"/>';
+  s+='<rect x="'+LX+'" y="'+LY+'" width="'+LW+'" height="28" rx="9" fill="'+C_MAIN+'" opacity="0.12"/>';
+  s+=_t(LX+LW/2,LY+14,'Table 13-4 · {SSB 30, PDCCH 30}kHz',{a:'middle',s:10.5,w:800,f:C_MAIND});
+  var hdr=['idx','图样','N_RB','N_sym','offset'];
+  var cw=[40,46,58,62,56], cx=LX+8;
+  for(var c=0;c<5;c++){ s+=_t(cx+cw[c]/2,LY+44,hdr[c],{a:'middle',s:9,w:700,f:C_SEC}); cx+=cw[c]; }
+  var rows134=[[0,1,24,2,0],[1,1,24,2,1],[2,1,24,2,2],[3,1,24,3,0]];
+  for(var r=0;r<4;r++){
+    var ry=LY+58+r*38, sel=(rows134[r][0]===CSET0_IDX);
+    var litRow=(ph>=2&&sel);
+    s+='<rect x="'+(LX+6)+'" y="'+ry+'" width="'+(LW-12)+'" height="34" rx="5" fill="'+(litRow?C_MAINL:(r%2?'#f8fafc':'#fff'))+'" stroke="'+(litRow?C_MAIN:'none')+'" stroke-width="'+(litRow?2:0)+'"/>';
+    cx=LX+8;
+    for(var c2=0;c2<5;c2++){
+      var v=rows134[r][c2];
+      s+=_t(cx+cw[c2]/2,ry+17,v,{a:'middle',s:10,w:(litRow?800:500),f:(litRow?C_MAIND:'#475569')});
+      cx+=cw[c2];
+    }
+  }
+  if(ph>=2){
+    s+=_t(LX+LW/2,LY+212,'→ 24RB × 2sym，offset 1 RB（在哪）',{a:'middle',s:9.5,w:700,f:C_MAIN});
+  }
+
+  /* 右表 Table 13-11 */
+  var RX=368, RW=312, RY=108;
+  s+='<rect x="'+RX+'" y="'+RY+'" width="'+RW+'" height="220" rx="9" fill="#fff" stroke="'+C_KEY+'" stroke-width="'+(ph>=3?2.5:1.3)+'"/>';
+  s+='<rect x="'+RX+'" y="'+RY+'" width="'+RW+'" height="28" rx="9" fill="'+C_KEY+'" opacity="0.12"/>';
+  s+=_t(RX+RW/2,RY+14,'Table 13-11 · Type0-PDCCH (图样1)',{a:'middle',s:10.5,w:800,f:'#b45309'});
+  var hdr2=['idx','O','SS/slot','M','首符号'];
+  var cw2=[40,46,68,46,62], cx2=RX+8;
+  for(var c3=0;c3<5;c3++){ s+=_t(cx2+cw2[c3]/2,RY+44,hdr2[c3],{a:'middle',s:9,w:700,f:C_SEC}); cx2+=cw2[c3]; }
+  var rows1311=[[0,0,1,1,0],[1,0,2,1,0],[2,2,1,1,0],[3,2,2,1,0]];
+  for(var r2=0;r2<4;r2++){
+    var ry2=RY+58+r2*38, sel2=(rows1311[r2][0]===SS0_IDX);
+    var litRow2=(ph>=3&&sel2);
+    s+='<rect x="'+(RX+6)+'" y="'+ry2+'" width="'+(RW-12)+'" height="34" rx="5" fill="'+(litRow2?C_KEYL:(r2%2?'#f8fafc':'#fff'))+'" stroke="'+(litRow2?C_KEY:'none')+'" stroke-width="'+(litRow2?2:0)+'"/>';
+    cx2=RX+8;
+    for(var c4=0;c4<5;c4++){
+      var v2=rows1311[r2][c4];
+      s+=_t(cx2+cw2[c4]/2,ry2+17,v2,{a:'middle',s:10,w:(litRow2?800:500),f:(litRow2?'#b45309':'#475569')});
+      cx2+=cw2[c4];
+    }
+  }
+  if(ph>=3){
+    s+=_t(RX+RW/2,RY+212,'→ 偶帧 slot0 符号0（何时）',{a:'middle',s:9.5,w:700,f:C_KEY});
+  }
+
+  /* 底部汇总 */
+  s+='<rect x="40" y="344" width="640" height="122" rx="10" fill="'+(ph>=4?'#fff':'#f8fafc')+'" stroke="'+(ph>=4?C_ANS:'#e2e8f0')+'" stroke-width="'+(ph>=4?2:1)+'"/>';
+  if(ph>=4){
+    s+=_t(360,366,'监听契约 = 在哪 ⊕ 何时',{a:'middle',s:12,w:800,f:C_MAIND});
+    s+='<rect x="64" y="382" width="290" height="68" rx="8" fill="'+C_MAINL+'"/>';
+    s+=_t(209,402,'空间：CORESET#0',{a:'middle',s:10.5,w:700,f:C_MAIN});
+    s+=_t(209,422,'24 RB × 2 symbol',{a:'middle',s:12,w:800,f:C_MAIND});
+    s+=_t(209,440,'相对 SSB offset 1 RB · 8 CCE',{a:'middle',s:9,f:C_SEC});
+    s+='<rect x="366" y="382" width="290" height="68" rx="8" fill="'+C_KEYL+'"/>';
+    s+=_t(511,402,'时间：监测时机',{a:'middle',s:10.5,w:700,f:'#b45309'});
+    s+=_t(511,422,'偶帧 slot 0 符号 0',{a:'middle',s:12,w:800,f:'#b45309'});
+    s+=_t(511,440,'n₀ = (O·2^μ + ⌊iM⌋) mod 20',{a:'middle',s:9,f:C_SEC});
+  } else {
+    s+=_t(360,405,'两把锁都打开后，这里汇总出完整的「监听契约」',{a:'middle',s:11,st:1,f:C_MUT});
+  }
+  s+='</svg>';
+
+  var ctrl='<div class="ctrl-bar">'+
+    '<button class="case-btn'+(ph>0?' on':'')+'" onclick="t1Run()">🔓 开锁（逐步）</button>'+
+    '<button class="case-btn" onclick="t1Reset()">↺ 复位</button>'+
+    '<span style="font-size:11px;color:var(--text-mut);font-family:var(--font-mono);">阶段 '+ph+'/4</span></div>';
+  return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:12px;">'+ctrl+s+'</div>';
+}
+function _t1VC(){ return document.getElementById('vizContainer'); }
+function _t1Re(){ var vc=_t1VC(); if(vc) vc.innerHTML=renderTableLookup(); }
+function t1Run(){
+  if(_t1Tid){ clearTimeout(_t1Tid); _t1Tid=null; }
+  function step(){
+    if(_t1Phase>=4) return;
+    _t1Phase++; _t1Re();
+    if(_t1Phase===1) Engine.LogEngine.inject('[MAC] 0x10 拆位：高4位=1，低4位=0。');
+    if(_t1Phase===2) Engine.LogEngine.inject('[DATA] Table 13-4[1] → 24RB×2sym, offset 1 RB。');
+    if(_t1Phase===3) Engine.LogEngine.inject('[DATA] Table 13-11[0] → O=0,M=1,首符号0 → 偶帧 slot0。');
+    if(_t1Phase===4) Engine.LogEngine.inject('[OK] 监听契约就绪：24RB×2sym @ 偶帧 slot0 符号0。');
+    if(_t1Phase<4){ _t1Tid=setTimeout(step,820); Engine.addTimer(_t1Tid); }
+  }
+  step();
+}
+function t1Reset(){
+  if(_t1Tid){ clearTimeout(_t1Tid); _t1Tid=null; }
+  _t1Phase=0; _t1Re();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   S5.2 · 时频反推（相对 SSB 锚定）
+   ═══════════════════════════════════════════════════════════ */
+function renderTimeFreq(){
+  var s='<svg viewBox="0 0 720 495" width="100%" height="100%" style="display:block;" xmlns="http://www.w3.org/2000/svg">';
+  s+='<defs><linearGradient id="tfbg" x1="0" y1="0" x2="0" y2="1">'+
+     '<stop offset="0" stop-color="#f5f6ff"/><stop offset="1" stop-color="#eef2ff"/></linearGradient>'+
+     '<marker id="tfar" viewBox="0 0 8 8" refX="4" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M1 1L7 4L1 7Z" fill="'+C_HI+'"/></marker></defs>';
+  s+='<rect x="14" y="14" width="692" height="467" rx="14" fill="url(#tfbg)" stroke="#c7d2fe" stroke-width="1.5"/>';
+  s+=_t(360,34,'CORESET#0 相对 SSB 落位：offset 1 RB + k_SSB 6 子载波精对齐',{a:'middle',s:12,w:700,f:C_MAIND});
+  s+=_t(360,52,'纵轴 = 频率（RB，低频在下）　横轴 = 时间（OFDM 符号）',{a:'middle',s:9.5,f:C_SEC});
+
+  /* 时频网格：横轴符号，纵轴 RB。绘制一个简化半帧片段 */
+  var GX=120, GY=80, GW=420, GH=340;
+  var nSym=8;                 // 显示 8 个符号（SSB 占 0~3，CORESET 占 5~6）
+  var symW=GW/nSym;
+  /* 频率范围：显示 26 个 RB（让 SSB 20RB + CORESET 24RB 都能放下，下移对齐）*/
+  var nRB=26, rbH=GH/nRB;
+  /* 网格底纹 */
+  for(var r=0;r<=nRB;r++){
+    var y=GY+GH-r*rbH;
+    s+='<line x1="'+GX+'" y1="'+y+'" x2="'+(GX+GW)+'" y2="'+y+'" stroke="#e2e8f0" stroke-width="0.5"/>';
+  }
+  for(var c=0;c<=nSym;c++){
+    var x=GX+c*symW;
+    s+='<line x1="'+x+'" y1="'+GY+'" x2="'+x+'" y2="'+(GY+GH)+'" stroke="#e2e8f0" stroke-width="0.5"/>';
+  }
+  /* 轴标签 */
+  for(var c2=0;c2<nSym;c2++){
+    s+=_t(GX+c2*symW+symW/2,GY+GH+14,'S'+c2,{a:'middle',s:8.5,f:C_MUT});
+  }
+  s+=_t(GX-10,GY+GH-2,'RB0',{a:'end',s:8.5,f:C_MUT});
+  s+=_t(GX-10,GY+8,'RB25',{a:'end',s:8.5,f:C_MUT});
+
+  /* SSB 块：符号 0~3，RB 占 1~20（即下移留出 offset 空间），青色 */
+  var ssbLoRB=1, ssbHiRB=21;   // 20 RB 宽
+  var ssbX=GX, ssbW=4*symW;
+  var ssbY=GY+GH-ssbHiRB*rbH, ssbH=(ssbHiRB-ssbLoRB)*rbH;
+  s+='<rect x="'+ssbX+'" y="'+ssbY.toFixed(1)+'" width="'+ssbW+'" height="'+ssbH.toFixed(1)+'" rx="3" fill="'+C_SSB+'" opacity="0.18" stroke="'+C_SSB+'" stroke-width="2"/>';
+  s+=_t(ssbX+ssbW/2,ssbY+ssbH/2-8,'SSB',{a:'middle',s:14,w:800,f:'#0e7490'});
+  s+=_t(ssbX+ssbW/2,ssbY+ssbH/2+10,'20 RB × 4 sym',{a:'middle',s:9.5,f:'#0e7490'});
+  s+=_t(ssbX+ssbW/2,ssbY-8,'UE 唯一已知锚点',{a:'middle',s:8.5,st:1,f:C_SSB});
+
+  /* CORESET#0 块：符号 5~6（TDM, 复用图样1），RB 占 0~24（下移 offset=1 RB）靛蓝 */
+  var csLoRB=0, csHiRB=24;     // 24 RB 宽，最低 RB 比 SSB 低 1
+  var csX=GX+5*symW, csW=2*symW;
+  var csY=GY+GH-csHiRB*rbH, csH=(csHiRB-csLoRB)*rbH;
+  s+='<rect x="'+csX+'" y="'+csY.toFixed(1)+'" width="'+csW+'" height="'+csH.toFixed(1)+'" rx="3" fill="'+C_MAIN+'" opacity="0.20" stroke="'+C_MAIN+'" stroke-width="2.5"/>';
+  s+=_t(csX+csW/2,csY+csH/2-8,'CORESET#0',{a:'middle',s:12,w:800,f:C_MAIND});
+  s+=_t(csX+csW/2,csY+csH/2+10,'24 RB × 2 sym',{a:'middle',s:9.5,f:C_MAIND});
+  s+=_t(csX+csW/2,csY-8,'8.64 MHz · 8 CCE',{a:'middle',s:8.5,st:1,f:C_MAIN});
+
+  /* TDM 关系标注 */
+  s+='<line x1="'+(ssbX+ssbW)+'" y1="'+(GY+GH+28)+'" x2="'+csX+'" y2="'+(GY+GH+28)+'" stroke="'+C_SEC+'" stroke-width="1" stroke-dasharray="3 2"/>';
+  s+=_t((ssbX+ssbW+csX)/2,GY+GH+28,'复用图样1：TDM',{a:'middle',s:8.5,w:700,f:C_SEC});
+
+  /* 频域 offset 标注：在 SSB↔CORESET 之间用两条水平基准线 + 竖向双箭头表示 1 RB 落差 */
+  var offY1=GY+GH-ssbLoRB*rbH;   // SSB 最低 RB 的 y（=RB1）
+  var offY2=GY+GH-csLoRB*rbH;    // CORESET 最低 RB 的 y（=RB0，网格底）
+  var offX=ssbX+ssbW+8;          // 落在 SSB 与 CORESET 之间的空档
+  /* SSB 最低 RB 基准虚线 */
+  s+='<line x1="'+(ssbX+ssbW)+'" y1="'+offY1+'" x2="'+(offX+30)+'" y2="'+offY1+'" stroke="'+C_HI+'" stroke-width="1" stroke-dasharray="3 2" opacity="0.7"/>';
+  /* CORESET 最低 RB 基准虚线 */
+  s+='<line x1="'+(offX+30)+'" y1="'+offY2+'" x2="'+csX+'" y2="'+offY2+'" stroke="'+C_HI+'" stroke-width="1" stroke-dasharray="3 2" opacity="0.7"/>';
+  /* 竖向双箭头标 1 RB 落差 */
+  s+='<line x1="'+(offX+20)+'" y1="'+offY1+'" x2="'+(offX+20)+'" y2="'+offY2+'" stroke="'+C_HI+'" stroke-width="2" marker-start="url(#tfar)" marker-end="url(#tfar)"/>';
+  s+='<rect x="'+(offX-6)+'" y="'+(offY2+4)+'" width="56" height="30" rx="5" fill="#fff" stroke="'+C_HI+'" stroke-width="1.2"/>';
+  s+=_t(offX+22,offY2+14,'offset',{a:'middle',s:9,w:700,f:C_HI});
+  s+=_t(offX+22,offY2+27,'1 RB',{a:'middle',s:8.5,w:700,f:C_HI});
+
+  /* 右侧放大镜：k_SSB 精对齐 */
+  var MX=560, MY=110, MW=126, MH=180;
+  s+='<rect x="'+MX+'" y="'+MY+'" width="'+MW+'" height="'+MH+'" rx="9" fill="#fff" stroke="'+C_KEY+'" stroke-width="1.5"/>';
+  s+=_t(MX+MW/2,MY+16,'🔍 频域精对齐',{a:'middle',s:10,w:800,f:'#b45309'});
+  /* 画 SSB 栅格 vs CORESET 栅格的子载波缝隙 */
+  var scN=8, scH=14, gx0=MX+18, gy0=MY+38;
+  for(var k=0;k<scN;k++){
+    var yk=gy0+k*scH;
+    s+='<rect x="'+gx0+'" y="'+yk+'" width="34" height="'+(scH-2)+'" rx="2" fill="'+C_SSB+'" opacity="0.25" stroke="'+C_SSB+'" stroke-width="0.8"/>';
+    /* CORESET 栅格偏移 k_SSB（这里示意性下移半格表示 6 子载波零头）*/
+    s+='<rect x="'+(gx0+44)+'" y="'+(yk+6)+'" width="34" height="'+(scH-2)+'" rx="2" fill="'+C_MAIN+'" opacity="0.28" stroke="'+C_MAIN+'" stroke-width="0.8"/>';
+  }
+  s+=_t(gx0+17,gy0+scN*scH+10,'SSB',{a:'middle',s:8,f:'#0e7490'});
+  s+=_t(gx0+61,gy0+scN*scH+10,'CRB',{a:'middle',s:8,f:C_MAIN});
+  s+=_t(MX+MW/2,MY+MH-12,'k_SSB = 6 子载波零头',{a:'middle',s:8.5,w:700,f:'#b45309'});
+
+  /* 底部公式条 */
+  s+='<rect x="40" y="432" width="640" height="40" rx="9" fill="'+C_MAINL+'" stroke="#c7d2fe" stroke-width="1"/>';
+  s+=_t(360,446,'CORESET#0 起点 = SSB 最低 RB − offset(1 RB) − k_SSB(6 子载波)　·　全程不出现 Point A',{a:'middle',s:10,w:700,f:C_MAIND});
+  s+=_t(360,462,'REG = 24 × 2 = 48　→　CCE = 48 / 6 = 8　（下一屏盲检的全部货架）',{a:'middle',s:9.5,f:C_SEC});
+
+  s+='</svg>';
+  return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;padding-top:6px;">'+s+'</div>';
+}
+
+/* ═══════════════════════════════════════════════════════════
+   S5.3 · PDCCH 盲检（8-CCE 池 + 聚合等级 + SI-RNTI/CRC）
+   ═══════════════════════════════════════════════════════════ */
+/* 候选集（已 Python 验证 8-CCE 池）：AL4×2 + AL8×1；命中 AL8(占满) */
+var BD_CAND=[
+  {al:4, cce:[0,1,2,3],   hit:false},
+  {al:4, cce:[4,5,6,7],   hit:false},
+  {al:8, cce:[0,1,2,3,4,5,6,7], hit:true}
+];
+/* CCE 平均功率（预计算，门限 0.5）：本例 8 CCE 均被 AL8 占用 → 全部高于门限 */
+var BD_PWR=[0.92,0.88,0.95,0.90,0.86,0.93,0.89,0.94];
+var BD_PTH=0.5;
+var _bdIdx=-1, _bdDone=false, _bdTid=null;
+function renderBlindDecode(){
+  var s='<svg viewBox="0 0 720 495" width="100%" height="100%" style="display:block;" xmlns="http://www.w3.org/2000/svg">';
+  s+='<defs><linearGradient id="bdbg" x1="0" y1="0" x2="0" y2="1">'+
+     '<stop offset="0" stop-color="#f5f6ff"/><stop offset="1" stop-color="#eef2ff"/></linearGradient></defs>';
+  s+='<rect x="14" y="14" width="692" height="467" rx="14" fill="url(#bdbg)" stroke="#c7d2fe" stroke-width="1.5"/>';
+  s+=_t(360,32,'PDCCH 盲检：8-CCE 货架上逐候选试解 + SI-RNTI 校验',{a:'middle',s:12.5,w:700,f:C_MAIND});
+  s+=_t(360,50,'谁的 CRC（用 SI-RNTI 解扰后）通过，谁就是 SIB1 的调度令',{a:'middle',s:9.5,f:C_SEC});
+
+  /* CCE 货架：8 格（含功率检测条）*/
+  var SX=130, SW=460, SY=78, cw=SW/8, ch=58;
+  s+=_t(SX-12,SY+ch/2,'CCE',{a:'end',s:10,w:700,f:C_SEC});
+  /* 货架上方：功率检测门限提示 */
+  s+=_t(SX,SY-10,'① 功率检测：算每个 CCE 平均功率，低于门限 0.5 判为「空」直接跳过（省电）',{s:9,w:700,f:'#b45309'});
+  for(var i=0;i<8;i++){
+    var x=SX+i*cw;
+    /* 当前候选是否覆盖此 CCE */
+    var inCur=(_bdIdx>=0&&_bdIdx<BD_CAND.length&&BD_CAND[_bdIdx].cce.indexOf(i)>=0);
+    var isHit=(_bdDone&&BD_CAND[_bdIdx]&&BD_CAND[_bdIdx].hit&&BD_CAND[_bdIdx].cce.indexOf(i)>=0);
+    var fill=isHit?C_ANSL:(inCur?C_MAINL:'#fff');
+    var stk =isHit?C_ANS:(inCur?C_MAIN:'#cbd5e1');
+    s+='<rect x="'+(x+2)+'" y="'+SY+'" width="'+(cw-4)+'" height="'+ch+'" rx="4" fill="'+fill+'" stroke="'+stk+'" stroke-width="'+(inCur||isHit?2:1)+'"/>';
+    s+=_t(x+cw/2,SY+13,i,{a:'middle',s:11,w:700,f:(isHit?C_ANS:(inCur?C_MAIND:C_MUT))});
+    /* 功率小柱：格内底部，高度 ∝ 功率，门限 0.5 用红虚线 */
+    var pbX=x+8, pbW=cw-16, pbBase=SY+ch-8, pbMaxH=26;
+    var pv=BD_PWR[i];
+    var pbH=pv*pbMaxH;
+    s+='<rect x="'+pbX+'" y="'+pbBase+'" width="'+pbW+'" height="3" rx="1" fill="#e2e8f0"/>';
+    s+='<rect x="'+pbX+'" y="'+(pbBase-pbH)+'" width="'+pbW+'" height="'+pbH.toFixed(1)+'" rx="1.5" fill="'+C_KEY+'" opacity="0.7"/>';
+    /* 门限线 */
+    s+='<line x1="'+pbX+'" y1="'+(pbBase-BD_PTH*pbMaxH)+'" x2="'+(pbX+pbW)+'" y2="'+(pbBase-BD_PTH*pbMaxH)+'" stroke="'+C_HI+'" stroke-width="0.8" stroke-dasharray="2 1.5"/>';
+  }
+  s+=_t(SX+SW+8,SY+ch-8-BD_PTH*26,'0.5',{s:8,f:C_HI});
+  s+=_t(SX+SW/2,SY+ch+12,'8 个 CCE 功率全部 > 0.5 → 都被占用 → 值得逐候选解码',{a:'middle',s:8.5,st:1,f:'#b45309'});
+  /* 候选窗口指示（在货架下方画当前候选框 + AL 标签）*/
+  var listY=176;
+  s+=_t(SX-12,listY-15,'② 逐候选解码（按聚合等级，源自 8-CCE 池）：',{s:10,w:700,f:C_SEC});
+  for(var k=0;k<BD_CAND.length;k++){
+    var cand=BD_CAND[k];
+    var ry=listY+k*48;
+    var active=(k===_bdIdx);
+    var passed=(_bdDone&&k===_bdIdx&&cand.hit);
+    var failed=(active&&!passed&&(_bdDone||(_bdIdx>k)))||(_bdIdx>k);
+    var fill, stk, txt, txtCol;
+    if(passed){ fill=C_ANSL; stk=C_ANS; txt='✓ SI-RNTI CRC 通过 → 锁定 DCI'; txtCol=C_ANS; }
+    else if(active&&!_bdDone){ fill=C_MAINL; stk=C_MAIN; txt='⟳ 解扰 + CRC 校验中…'; txtCol=C_MAIND; }
+    else if(failed){ fill='#f8fafc'; stk=C_GREY; txt='✗ CRC 失败（非此候选）'; txtCol=C_GREY; }
+    else { fill='#fff'; stk='#e2e8f0'; txt='待检'; txtCol=C_MUT; }
+    s+='<rect x="'+SX+'" y="'+ry+'" width="'+SW+'" height="40" rx="8" fill="'+fill+'" stroke="'+stk+'" stroke-width="'+(active||passed?2:1)+'"/>';
+    /* AL 徽标 */
+    s+='<rect x="'+(SX+10)+'" y="'+(ry+8)+'" width="62" height="24" rx="5" fill="'+stk+'" opacity="'+(passed||active?1:0.5)+'"/>';
+    s+=_t(SX+41,ry+20,'AL'+cand.al,{a:'middle',s:11,w:800,f:'#fff'});
+    s+=_t(SX+86,ry+20,'CCE '+cand.cce[0]+'~'+cand.cce[cand.cce.length-1],{s:10,w:700,f:txtCol});
+    s+=_t(SX+SW-12,ry+20,txt,{a:'end',s:10,w:700,f:txtCol});
+  }
+
+  /* AL16 放不下的诚实点 */
+  var noY=listY+3*48+6;
+  s+='<rect x="'+SX+'" y="'+noY+'" width="'+SW+'" height="38" rx="8" fill="#fef2f2" stroke="#fecaca" stroke-width="1.2"/>';
+  s+='<rect x="'+(SX+10)+'" y="'+(noY+7)+'" width="62" height="24" rx="5" fill="'+C_HI+'" opacity="0.85"/>';
+  s+=_t(SX+41,noY+19,'AL16',{a:'middle',s:11,w:800,f:'#fff'});
+  s+=_t(SX+86,noY+19,'需 16 CCE > 8',{s:10,w:700,f:'#991b1b'});
+  s+=_t(SX+SW-12,noY+19,'✗ 物理上放不下，UE 不盲检它',{a:'end',s:10,w:700,f:'#991b1b'});
+
+  /* 底部 SI-RNTI 公式（精确化：RNTI 16b 只翻转 CRC24 低 16 位）*/
+  var fy=noY+48;
+  s+='<rect x="40" y="'+fy+'" width="640" height="44" rx="9" fill="'+C_MAINL+'" stroke="#c7d2fe" stroke-width="1"/>';
+  s+=_t(360,fy+15,'RNTI(16b) 只翻转 CRC24 的低 16 位　·　SIB1 固定用 SI-RNTI = 0xFFFF（寻址 + 检错二合一）',{a:'middle',s:10,w:700,f:C_MAIND});
+  if(_bdDone){
+    s+=_t(360,fy+32,'命中 AL8（占满 8 CCE，最强保护）→ DCI format 1_0 已捕获，下一屏解析',{a:'middle',s:9.5,w:700,f:C_ANS});
+  } else {
+    s+=_t(360,fy+32,'gNB 开机时为求稳健倾向大聚合等级（更多 CCE = 更强编码保护）',{a:'middle',s:9.5,st:1,f:C_SEC});
+  }
+  s+='</svg>';
+
+  var ctrl='<div class="ctrl-bar">'+
+    '<button class="case-btn'+(_bdIdx>=0?' on':'')+'" onclick="bdRun()">▶ 开始盲检</button>'+
+    '<button class="case-btn" onclick="bdReset()">↺ 复位</button></div>';
+  return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:10px;">'+ctrl+s+'</div>';
+}
+function _bdVC(){ return document.getElementById('vizContainer'); }
+function _bdRe(){ var vc=_bdVC(); if(vc) vc.innerHTML=renderBlindDecode(); }
+function bdRun(){
+  if(_bdTid){ clearTimeout(_bdTid); _bdTid=null; }
+  _bdIdx=-1; _bdDone=false; _bdRe();
+  function step(){
+    _bdIdx++;
+    if(_bdIdx>=BD_CAND.length){ _bdIdx=BD_CAND.length-1; return; }
+    var cand=BD_CAND[_bdIdx];
+    _bdDone=false; _bdRe();
+    Engine.LogEngine.inject('[DSP] 盲检候选 #'+(_bdIdx+1)+'：AL'+cand.al+' @ CCE '+cand.cce[0]+'~'+cand.cce[cand.cce.length-1]+'，SI-RNTI 解扰 CRC…');
+    _bdTid=setTimeout(function(){
+      if(cand.hit){
+        _bdDone=true; _bdRe();
+        Engine.LogEngine.inject('[OK] ✓ AL8 候选 CRC 通过 → 锁定 DCI format 1_0（SIB1 调度令）。');
+      } else {
+        Engine.LogEngine.inject('[DSP] 候选 #'+(_bdIdx+1)+' CRC 失败，继续下一个。');
+        _bdTid=setTimeout(step,560); Engine.addTimer(_bdTid);
+      }
+    },720);
+    Engine.addTimer(_bdTid);
+  }
+  step();
+}
+function bdReset(){
+  if(_bdTid){ clearTimeout(_bdTid); _bdTid=null; }
+  _bdIdx=-1; _bdDone=false; _bdRe();
+}
+
+/* ═══════════════════════════════════════════════════════════
+   S5.4 · DCI format 1_0 解析（→ 写总线）
+   ═══════════════════════════════════════════════════════════ */
+/* 37-bit 载荷：22-bit 语义字段 + 15-bit 预留位（size alignment，已 Python 验证位宽）*/
+var DCI_FIELDS=[
+  {nm:'RIV',     bits:9, col:C_MAIN, val:'RIV=47', human:'RB_start=0, L=24',     ctx:true},
+  {nm:'TDRA',    bits:4, col:'#0891b2', val:'idx→K0=0', human:'符号 2~13',       ctx:true},
+  {nm:'VRB→PRB', bits:1, col:'#7c3aed', val:'0',       human:'非交织',           ctx:false},
+  {nm:'MCS',     bits:5, col:C_KEY,  val:'5',          human:'QPSK, R≈0.37',     ctx:false},
+  {nm:'RV',      bits:2, col:'#0d9488', val:'0',        human:'首传',             ctx:false},
+  {nm:'SI 指示', bits:1, col:'#db2777', val:'0',        human:'= SIB1',           ctx:false},
+  {nm:'预留位',  bits:15,col:C_GREY, val:'0…0',        human:'凑齐尺寸 · 不载信息', ctx:false, pad:true}
+];
+var DCI_SEM_BITS=22, DCI_TOT_BITS=37;   // 语义 22 + 预留 15 = 37
+var _dciReveal=0, _dciDone=false, _dciTid=null;
+function renderDCI(){
+  var s='<svg viewBox="0 0 720 495" width="100%" height="100%" style="display:block;" xmlns="http://www.w3.org/2000/svg">';
+  s+='<defs><linearGradient id="dcibg" x1="0" y1="0" x2="0" y2="1">'+
+     '<stop offset="0" stop-color="#f5f6ff"/><stop offset="1" stop-color="#eef2ff"/></linearGradient>'+
+     '<pattern id="dciPad" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">'+
+     '<rect width="6" height="6" fill="#eef2f7"/><line x1="0" y1="0" x2="0" y2="6" stroke="'+C_GREY+'" stroke-width="2" opacity="0.55"/></pattern></defs>';
+  s+='<rect x="14" y="14" width="692" height="467" rx="14" fill="url(#dcibg)" stroke="#c7d2fe" stroke-width="1.5"/>';
+  s+=_t(360,32,'DCI format 1_0 解析：读出 SIB1 的 PDSCH「提货单」',{a:'middle',s:12.5,w:700,f:C_MAIND});
+  s+=_t(360,50,'37-bit 载荷 = 22-bit 语义字段 + 15-bit 预留位（凑齐尺寸）· SI-RNTI 加扰',{a:'middle',s:9.5,f:C_SEC});
+
+  /* 顶部比特带：37 bit 按字段分段（预留位用斜纹质感）*/
+  var BX=64, BW=592, BY=72, bh=30;
+  var totBits=DCI_TOT_BITS, ux=BX, perBit=BW/totBits;
+  for(var f=0;f<DCI_FIELDS.length;f++){
+    var fd=DCI_FIELDS[f];
+    var w=fd.bits*perBit;
+    var lit=(_dciReveal>f);
+    if(fd.pad){
+      /* 预留位：始终斜纹底（死区），点亮时仅加描边强调 */
+      s+='<rect x="'+ux.toFixed(1)+'" y="'+BY+'" width="'+(w-2).toFixed(1)+'" height="'+bh+'" rx="3" '+
+         'fill="url(#dciPad)" stroke="'+C_GREY+'" stroke-width="'+(lit?2:1.2)+'"'+(lit?'':' opacity="0.6"')+'/>';
+      s+=_t(ux+w/2,BY+bh/2,'预留 0…0',{a:'middle',s:8.5,w:700,f:lit?'#475569':C_MUT});
+    } else {
+      s+='<rect x="'+ux.toFixed(1)+'" y="'+BY+'" width="'+(w-2).toFixed(1)+'" height="'+bh+'" rx="3" '+
+         'fill="'+(lit?fd.col:'#fff')+'" opacity="'+(lit?0.85:1)+'" stroke="'+fd.col+'" stroke-width="1.5"/>';
+      s+=_t(ux+w/2,BY+bh/2,fd.nm,{a:'middle',s:(fd.bits<=1?7.5:9),w:700,f:lit?'#fff':fd.col});
+    }
+    s+=_t(ux+w/2,BY+bh+10,fd.bits+'b',{a:'middle',s:8,f:C_MUT});
+    ux+=w;
+  }
+  s+=_t(BX,BY-8,'MSB',{s:8,f:C_MUT});
+  s+=_t(BX+BW,BY-8,'LSB',{a:'end',s:8,f:C_MUT});
+
+  /* 逐字段解析卡片：前 6 个语义字段排 3 行 2 列 */
+  var cardY=128, cardH=50, colW=300;
+  var semCount=6;
+  for(var f2=0;f2<semCount;f2++){
+    var fd2=DCI_FIELDS[f2];
+    var col=f2%2, row=Math.floor(f2/2);
+    var cx=64+col*(colW+20), cy=cardY+row*(cardH+8);
+    var lit2=(_dciReveal>f2);
+    s+='<rect x="'+cx+'" y="'+cy+'" width="'+colW+'" height="'+cardH+'" rx="8" '+
+       'fill="'+(lit2?(fd2.ctx?C_ANSL:'#fff'):'#f8fafc')+'" stroke="'+(lit2?(fd2.ctx?C_ANS:fd2.col):'#e2e8f0')+'" stroke-width="'+(lit2?1.8:1)+'"/>';
+    s+='<rect x="'+(cx+10)+'" y="'+(cy+10)+'" width="6" height="'+(cardH-20)+'" rx="3" fill="'+fd2.col+'" opacity="'+(lit2?1:0.3)+'"/>';
+    s+=_t(cx+26,cy+16,fd2.nm+' ('+fd2.bits+'b)',{s:10,w:700,f:lit2?(fd2.ctx?C_ANS:fd2.col):C_MUT});
+    s+=_t(cx+26,cy+34,fd2.val+' → '+fd2.human,{s:9.5,w:(lit2?700:400),f:lit2?'#334155':C_MUT});
+    if(fd2.ctx&&lit2){ s+=_t(cx+colW-12,cy+16,'→NR_CTX',{a:'end',s:8,w:700,f:C_ANS}); }
+  }
+  /* 第 7 个：预留位做成跨整行的斜纹「配重块」横条 */
+  var padFd=DCI_FIELDS[6];
+  var padY=cardY+3*(cardH+8)+2, padH=44;
+  var padLit=(_dciReveal>6);
+  s+='<rect x="64" y="'+padY+'" width="592" height="'+padH+'" rx="8" fill="url(#dciPad)" stroke="'+C_GREY+'" stroke-width="'+(padLit?2:1.2)+'"'+(padLit?'':' opacity="0.6"')+'/>';
+  s+='<rect x="74" y="'+(padY+9)+'" width="6" height="'+(padH-18)+'" rx="3" fill="'+C_GREY+'"/>';
+  s+=_t(90,padY+15,'预留位 (15b) · Reserved bits = 0…0',{s:10,w:700,f:padLit?'#475569':C_MUT});
+  s+=_t(90,padY+33,'不载任何信息，纯属「凑尺寸」的配重块 → 让 DCI 1_0 与 fallback 预算尺寸对齐',{s:9,f:padLit?'#64748b':C_MUT});
+  if(padLit){ s+=_t(648,padY+15,'⚖ size align',{a:'end',s:8.5,w:700,f:'#475569'}); }
+
+  /* 底部：SIB1 PDSCH 提货单汇总 */
+  var sumY=padY+padH+8;
+  s+='<rect x="64" y="'+sumY+'" width="592" height="64" rx="10" fill="'+(_dciDone?'#fff':'#f8fafc')+'" stroke="'+(_dciDone?C_ANS:'#e2e8f0')+'" stroke-width="'+(_dciDone?2:1)+'"/>';
+  if(_dciDone){
+    s+=_t(360,sumY+15,'📦 SIB1 PDSCH 提货单 → 交给 Stage 6',{a:'middle',s:11,w:800,f:C_MAIND});
+    s+='<rect x="80" y="'+(sumY+24)+'" width="270" height="34" rx="6" fill="'+C_MAINL+'"/>';
+    s+=_t(215,sumY+35,'频域：RB 0~23（24 RB）',{a:'middle',s:9.5,w:700,f:C_MAIND});
+    s+=_t(215,sumY+50,'时域：符号 2~13（同 slot, K0=0）',{a:'middle',s:9,f:C_SEC});
+    s+='<rect x="370" y="'+(sumY+24)+'" width="270" height="34" rx="6" fill="'+C_ANSL+'"/>';
+    s+=_t(505,sumY+35,'传输：QPSK · LDPC · CRC16',{a:'middle',s:9.5,w:700,f:C_ANS});
+    s+=_t(505,sumY+50,'MCS=5, RV=0, SI 指示=SIB1',{a:'middle',s:9,f:'#047857'});
+  } else {
+    s+=_t(360,sumY+32,'逐字段解析完成后，这里汇总 SIB1 的时频提货单',{a:'middle',s:11,st:1,f:C_MUT});
+  }
+  s+='</svg>';
+
+  var ctrl='<div class="ctrl-bar">'+
+    '<button class="case-btn'+(_dciReveal>0?' on':'')+'" onclick="dciRun()">▶ 逐字段解析</button>'+
+    '<button class="case-btn" onclick="dciReset()">↺ 复位</button>'+
+    '<span style="font-size:11px;color:var(--text-mut);font-family:var(--font-mono);">'+Math.min(_dciReveal,7)+'/7 字段</span></div>';
+  return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:10px;">'+ctrl+s+'</div>';
+}
+function _dciVC(){ return document.getElementById('vizContainer'); }
+function _dciRe(){ var vc=_dciVC(); if(vc) vc.innerHTML=renderDCI(); }
+function dciRun(){
+  if(_dciTid){ clearTimeout(_dciTid); _dciTid=null; }
+  _dciReveal=0; _dciDone=false; _dciRe();
+  function step(){
+    if(_dciReveal>=DCI_FIELDS.length){
+      _dciDone=true; _dciRe();
+      _dciWriteCtx();
+      return;
+    }
+    var fd=DCI_FIELDS[_dciReveal];
+    _dciReveal++; _dciRe();
+    Engine.LogEngine.inject('[DATA] 解析字段 '+fd.nm+'：'+fd.val+' → '+fd.human+'。');
+    _dciTid=setTimeout(step,640); Engine.addTimer(_dciTid);
+  }
+  step();
+}
+function _dciWriteCtx(){
+  /* 写总线：先写非顶栏字段，最后 ctxSet 触发单次重绘+顶栏同步 */
+  if(window.NR_CTX){
+    window.NR_CTX.coreset0_rb_start=0;
+    window.NR_CTX.coreset0_rb_size=CSET_RB;
+    window.NR_CTX.coreset0_sym=CSET_SYM;
+  }
+  Engine.LogEngine.inject('[DATA] CORESET#0：RB_start=0, RB_size=24, 符号数=2 写入 NR_CTX。');
+  Engine.ctxSet('initial_bwp_rb', CSET_RB);   // 顶栏点亮 BWP 24RB
+  Engine.LogEngine.inject('[SUCCESS] DCI 1_0 解析完成 → SIB1 PDSCH 调度就绪，通往 Stage 6。');
+}
+function dciReset(){
+  if(_dciTid){ clearTimeout(_dciTid); _dciTid=null; }
+  _dciReveal=0; _dciDone=false; _dciRe();
+}
+
+/* ─── Viz Router ─────────────────────────────────────────── */
+Engine.renderVizSVG = function(subIdx){
+  if(subIdx===0) return renderS5Discuss();
+  if(subIdx===1) return renderTableLookup();
+  if(subIdx===2) return renderTimeFreq();
+  if(subIdx===3) return renderBlindDecode();
+  if(subIdx===4) return renderDCI();
+  return renderS5Discuss();
+};
+Engine.onAfterRender = function(subIdx){
+  if(subIdx===1){ t1Reset(); t1Run(); }
+  if(subIdx===3){ bdReset(); bdRun(); }
+  if(subIdx===4){ dciReset(); dciRun(); }
+};
+Engine.onStageExit = function(){
+  if(_t1Tid){ clearTimeout(_t1Tid); _t1Tid=null; }
+  if(_bdTid){ clearTimeout(_bdTid); _bdTid=null; }
+  if(_dciTid){ clearTimeout(_dciTid); _dciTid=null; }
+};
+
+Engine.boot({ stageIdx: 5 });
+</script>
+</body>
+</html>

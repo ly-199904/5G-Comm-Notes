@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Stage 0 · UE 开机初始化</title>
+<link rel="stylesheet" href="design-system.css">
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['$','$'], ['\\(','\\)']] },
+  options: { skipHtmlTags: ['script','noscript','style','textarea'] }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+</head>
+<body>
+<div id="app"></div>
+<script src="stage-data.js"></script>
+<script src="engine.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════
+   Stage 0 · UE Boot · SVG Renderers
+   sub 0 = Tc 理论黑板
+   sub 1 = 时钟树动画
+   sub 2 = 先验字典三卡片
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Sub 0: Tc 理论黑板 ───────────────────────────────────── */
+function renderBlackboard() {
+  return `<svg viewBox="0 0 720 495" width="100%" height="100%"
+    style="display:block;"
+    xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bbg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f0f6ff"/>
+      <stop offset="1" stop-color="#e8f0fb"/>
+    </linearGradient>
+    <marker id="arrD" viewBox="0 0 8 8" refX="4" refY="4"
+            markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M1 1L7 4L1 7Z" fill="#1d4ed8"/>
+    </marker>
+  </defs>
+  <rect x="16" y="16" width="688" height="408" rx="14"
+        fill="url(#bbg)" stroke="#c8d6e8" stroke-width="1.5"/>
+  <rect x="16" y="16" width="688" height="44" rx="14" fill="#1d4ed8" opacity=".08"/>
+  <text x="360" y="38" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="13" font-weight="700" fill="#1d4ed8">
+    TS 38.211 §4.1 — NR 时域参数与原子时间单位 Tc</text>
+
+  <!-- Input params box -->
+  <rect x="160" y="78" width="400" height="82" rx="10"
+        fill="white" stroke="#1d4ed8" stroke-width="1.5"/>
+  <text x="360" y="100" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="13" fill="#334155">推导起点：OFDM 极限参数</text>
+  <text x="360" y="124" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="15"
+        fill="#1d4ed8" font-weight="700">
+    Df_max = 480 kHz  &#160;&#160;  N_f = 4096</text>
+  <text x="360" y="148" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="11" fill="#64748b">
+    最大子载波间隔 x 最大 FFT 点数（3GPP 规定上限）</text>
+
+  <!-- Arrow -->
+  <line x1="360" y1="162" x2="360" y2="182" stroke="#1d4ed8" stroke-width="2"
+        marker-end="url(#arrD)"/>
+
+  <!-- Result box -->
+  <rect x="118" y="186" width="484" height="66" rx="10"
+        fill="#1d4ed8" opacity=".06" stroke="#1d4ed8" stroke-width="1.5"/>
+  <text x="360" y="208" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="13" fill="#1e3a5f">唯一确定：</text>
+  <text x="360" y="232" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="18"
+        fill="#1d4ed8" font-weight="800">Tc = 1 / (480000 x 4096) = 0.509 ns</text>
+
+  <!-- Derived row: 5 cards  (κ=Ts/Tc=64, classic ints are Ts-based) -->
+  <rect x="28"  y="274" width="118" height="66" rx="8" fill="white" stroke="#d97706" stroke-width="1.2"/>
+  <text x="87"  y="290" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#92400e" font-weight="700">TA 步长</text>
+  <text x="87"  y="308" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="12" fill="#d97706" font-weight="800">512 x Tc</text>
+  <text x="87"  y="325" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#92400e">= 0.26 us</text>
+
+  <rect x="160" y="274" width="118" height="66" rx="8" fill="white" stroke="#7c3aed" stroke-width="1.2"/>
+  <text x="219" y="290" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#4c1d95" font-weight="700">Normal CP</text>
+  <text x="219" y="308" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="12" fill="#7c3aed" font-weight="800">4608 x Tc</text>
+  <text x="219" y="325" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#4c1d95">= 2.34 us</text>
+
+  <rect x="292" y="274" width="136" height="66" rx="8" fill="white" stroke="#2563eb" stroke-width="1.2"/>
+  <text x="360" y="290" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#1e40af" font-weight="700">OFDM Symbol</text>
+  <text x="360" y="308" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="12" fill="#2563eb" font-weight="800">65536 x Tc</text>
+  <text x="360" y="325" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#1e40af">= 33.33 us</text>
+
+  <rect x="442" y="274" width="118" height="66" rx="8" fill="white" stroke="#6366f1" stroke-width="1.2"/>
+  <text x="501" y="290" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#3730a3" font-weight="700">Slot (u=1)</text>
+  <text x="501" y="308" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="12" fill="#6366f1" font-weight="800">983040 x Tc</text>
+  <text x="501" y="325" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#3730a3">= 0.5 ms</text>
+
+  <rect x="574" y="274" width="118" height="66" rx="8" fill="white" stroke="#0891b2" stroke-width="1.2"/>
+  <text x="633" y="290" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#164e63" font-weight="700">Frame</text>
+  <text x="633" y="308" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="12" fill="#0891b2" font-weight="800">307200 x Ts</text>
+  <text x="633" y="325" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#164e63">= 10 ms</text>
+
+  <text x="360" y="370" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="12" fill="#64748b" font-style="italic">
+    "NR 的时间体系不是任意规定的——它是 OFDM 极限参数的唯一数学结果。"</text>
+  <text x="360" y="396" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#94a3b8">
+    点击 [下一步] 进入时钟树硬件仿真</text>
+</svg>`;
+}
+
+/* ── Sub 1: 时钟树动画 ─────────────────────────────────────── */
+var _clkDone = 0;
+var _clkTimer = null;
+
+function replayClockAnim() {
+  _clkDone = 0;
+  if (_clkTimer) clearInterval(_clkTimer);
+
+  var arrs  = ['arr1','arr2','arr3'];
+  var boxes = ['box-pll1','box-pll2','box-tc'];
+
+  // 全部置暗
+  ['arr1','arr2','arr3','box-pll1','box-pll2','box-tc'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (el) el.setAttribute('opacity', '0.2');
+  });
+
+  _clkTimer = Engine.addTimer(setInterval(function() {
+    _clkDone++;
+    if (_clkDone <= 3) {
+      var ae = document.getElementById(arrs[_clkDone - 1]);
+      var be = document.getElementById(boxes[_clkDone - 1]);
+      if (ae) ae.setAttribute('opacity', '1');
+      if (be) be.setAttribute('opacity', '1');
+      if (_clkDone === 3) {
+        clearInterval(_clkTimer);
+      }
+    }
+  }, 750));
+}
+
+function renderClockTree() {
+  return `<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;gap:10px;">
+<svg viewBox="0 0 720 495" width="100%" height="100%"
+     style="display:block;flex:1;min-height:0;" xmlns="http://www.w3.org/2000/svg" id="clkSvg">
+  <defs>
+    <marker id="ca1" viewBox="0 0 8 8" refX="6" refY="4" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M1 1L7 4L1 7Z" fill="#1d4ed8"/>
+    </marker>
+  </defs>
+  <rect x="10" y="10" width="700" height="320" rx="12" fill="#f8fafc" stroke="#d4dce8" stroke-width="1.5"/>
+
+  <!-- TCXO -->
+  <rect x="28" y="130" width="118" height="60" rx="8"
+        fill="white" stroke="#d97706" stroke-width="2"/>
+  <text x="87" y="143" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="11" fill="#92400e" font-weight="700">TCXO</text>
+  <text x="87" y="162" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="13" fill="#d97706" font-weight="800">38.4 MHz</text>
+  <text x="87" y="176" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#92400e">+/-0.1 ppm</text>
+
+  <!-- Arrow 1 -->
+  <line id="arr1" x1="148" y1="160" x2="184" y2="160"
+        stroke="#1d4ed8" stroke-width="2" opacity="1" marker-end="url(#ca1)"/>
+
+  <!-- PLL1 -->
+  <g id="box-pll1" opacity="1">
+    <rect x="184" y="118" width="148" height="84" rx="8"
+          fill="white" stroke="#7c3aed" stroke-width="2"/>
+    <text x="258" y="135" text-anchor="middle" dominant-baseline="central"
+          font-family="SF Mono,Consolas,monospace" font-size="10" fill="#4c1d95" font-weight="700">Integer-N PLL</text>
+    <text x="258" y="155" text-anchor="middle" dominant-baseline="central"
+          font-family="SF Mono,Consolas,monospace" font-size="12" fill="#7c3aed" font-weight="800">x 32 倍频</text>
+    <text x="258" y="173" text-anchor="middle" dominant-baseline="central"
+          font-family="SF Mono,Consolas,monospace" font-size="11" fill="#7c3aed">1228.8 MHz</text>
+    <text x="258" y="191" text-anchor="middle" dominant-baseline="central"
+          font-family="SF Mono,Consolas,monospace" font-size="9" fill="#64748b">38.4 x 32</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <line id="arr2" x1="334" y1="160" x2="370" y2="160"
+        stroke="#1d4ed8" stroke-width="2" opacity="1" marker-end="url(#ca1)"/>
+
+  <!-- PLL2 -->
+  <g id="box-pll2" opacity="1">
+    <rect x="370" y="118" width="158" height="84" rx="8"
+          fill="white" stroke="#1d4ed8" stroke-width="2"/>
+    <text x="449" y="135" text-anchor="middle" dominant-baseline="central"
+          font-family="SF Mono,Consolas,monospace" font-size="10" fill="#1e3a5f" font-weight="700">Fractional-N PLL</text>
+    <text x="449" y="155" text-anchor="middle" dominant-baseline="central"
+          font-family="SF Mono,Consolas,monospace" font-size="11" fill="#1d4ed8" font-weight="800">1966.08 MHz</text>
+    <text x="449" y="173" text-anchor="middle" dominant-baseline="central"
+          font-family="SF Mono,Consolas,monospace" font-size="10" fill="#1d4ed8">480k x 4096</text>
+    <text x="449" y="191" text-anchor="middle" dominant-baseline="central"
+          font-family="SF Mono,Consolas,monospace" font-size="9" fill="#64748b">精细分频合成</text>
+  </g>
+
+  <!-- Arrow 3 -->
+  <line id="arr3" x1="530" y1="160" x2="566" y2="160"
+        stroke="#1d4ed8" stroke-width="2" opacity="1" marker-end="url(#ca1)"/>
+
+  <!-- Tc Result -->
+  <g id="box-tc" opacity="1">
+    <rect x="566" y="118" width="128" height="84" rx="8"
+          fill="#ecfdf5" stroke="#059669" stroke-width="2"/>
+    <text x="630" y="130" text-anchor="middle" dominant-baseline="central"
+          font-family="SF Mono,Consolas,monospace" font-size="10" fill="#065f46" font-weight="700">L1 时钟基准</text>
+    <text x="630" y="152" text-anchor="middle" dominant-baseline="central"
+          font-family="SF Mono,Consolas,monospace" font-size="18" fill="#059669" font-weight="900">Tc</text>
+    <text x="630" y="171" text-anchor="middle" dominant-baseline="central"
+          font-family="SF Mono,Consolas,monospace" font-size="12" fill="#065f46" font-weight="700">0.509 ns</text>
+    <text x="630" y="186" text-anchor="middle" dominant-baseline="central"
+          font-family="SF Mono,Consolas,monospace" font-size="10" fill="#047857">建立 OK</text>
+  </g>
+
+  <!-- TCXO waveform -->
+  <path d="M32 250 L52 250 L52 234 L68 234 L68 250 L84 250 L84 234 L100 234 L100 250 L116 250 L116 234 L132 234 L132 250 L148 250"
+        stroke="#d97706" stroke-width="1.5" fill="none" opacity="0.55"/>
+  <text x="87" y="268" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="9" fill="#92400e">38.4MHz 时钟波形</text>
+
+  <text x="360" y="296" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="11" fill="#64748b" id="clkStatus">
+    Tc = 0.509ns 建立完成。L1 计数器就绪。</text>
+  <text x="360" y="318" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="10" fill="#94a3b8" font-style="italic">
+    Tc 是 NR 物理层的最小时间砖 — κ=Ts/Tc=64，经典整数是 Ts 单位</text>
+</svg>
+<button onclick="replayClockAnim()"
+  style="padding:6px 20px;border-radius:8px;font-size:12px;font-family:var(--font-mono);
+         background:var(--surface);border:1.5px solid var(--brand);color:var(--brand);
+         cursor:pointer;font-weight:600;">
+  ↺ 重播时钟建立动画
+</button>
+</div>`;
+}
+
+/* ── Sub 2: 先验字典三卡片 ─────────────────────────────────── */
+function renderPriorDict() {
+  return `<svg viewBox="0 0 720 495" width="100%" height="100%"
+    style="display:block;"
+    xmlns="http://www.w3.org/2000/svg">
+  <rect x="12" y="12" width="696" height="396" rx="12" fill="#f8fafc" stroke="#d4dce8" stroke-width="1.5"/>
+  <text x="360" y="42" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="13" fill="#1d4ed8" font-weight="700">
+    先验字典载入 — 盲搜空间压缩三级过滤器</text>
+
+  <!-- Card 1: PSS -->
+  <rect x="28" y="66" width="200" height="290" rx="10" fill="white" stroke="#dc2626" stroke-width="1.5"/>
+  <rect x="28" y="66" width="200" height="36" rx="10" fill="#dc2626" opacity=".1"/>
+  <text x="128" y="85" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="11" fill="#7f1d1d" font-weight="700">PSS m 序列字典</text>
+  <text x="128" y="114" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="11" fill="#334155">生成多项式</text>
+  <text x="128" y="136" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="12" fill="#dc2626" font-weight="700">g(x)=x<tspan baseline-shift="super" font-size="8">7</tspan>+x<tspan baseline-shift="super" font-size="8">4</tspan>+1</text>
+  <line x1="48" y1="150" x2="208" y2="150" stroke="#fee2e2" stroke-width="1"/>
+  <text x="128" y="168" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#64748b">N_ID2 = 0</text>
+  <rect x="56" y="177" width="144" height="16" rx="3" fill="#fee2e2"/>
+  <text x="128" y="185" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="9" fill="#dc2626">0110110... (127 bit)</text>
+  <text x="128" y="205" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#64748b">N_ID2 = 1</text>
+  <rect x="56" y="214" width="144" height="16" rx="3" fill="#ffe4e6"/>
+  <text x="128" y="222" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="9" fill="#be123c">1001011... (127 bit)</text>
+  <text x="128" y="242" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#64748b">N_ID2 = 2</text>
+  <rect x="56" y="251" width="144" height="16" rx="3" fill="#fce7f3"/>
+  <text x="128" y="259" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="9" fill="#9d174d">1110100... (127 bit)</text>
+  <text x="128" y="290" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="10" fill="#64748b" font-style="italic">自相关≈127 互相关≈−1</text>
+  <text x="128" y="306" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="8" fill="#94a3b8">同一条 m-序列 移位 0/43/86</text>
+  <rect x="38" y="330" width="180" height="16" rx="7" fill="#fee2e2"/>
+  <text x="128" y="338" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="9" fill="#7f1d1d">注入相关器 ROM</text>
+
+  <!-- Card 2: GSCN -->
+  <rect x="258" y="66" width="204" height="290" rx="10" fill="white" stroke="#d97706" stroke-width="1.5"/>
+  <rect x="258" y="66" width="204" height="36" rx="10" fill="#d97706" opacity=".1"/>
+  <text x="360" y="85" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="11" fill="#78350f" font-weight="700">GSCN 同步栅格字典</text>
+  <text x="360" y="114" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="11" fill="#334155">FR1 全球格点数</text>
+  <text x="360" y="140" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="18" fill="#d97706" font-weight="800">~347</text>
+  <line x1="278" y1="155" x2="442" y2="155" stroke="#fef3c7" stroke-width="1"/>
+  <text x="360" y="173" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="10" fill="#64748b">vs ARFCN 信道栅格盲扫</text>
+  <text x="360" y="192" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="16" fill="#334155" font-weight="700">360,000</text>
+  <text x="360" y="210" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="10" fill="#64748b">个频点（15kHz 步进）</text>
+  <rect x="273" y="222" width="174" height="38" rx="6" fill="#fef3c7"/>
+  <text x="360" y="234" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#78350f" font-weight="700">GSCN 搜索压缩比</text>
+  <text x="360" y="251" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="15" fill="#d97706" font-weight="900">/ 96x</text>
+  <text x="360" y="276" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="10" fill="#64748b">n78 常用格点约 347 个</text>
+  <text x="360" y="293" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#64748b">步长约 1.44 MHz</text>
+  <text x="360" y="316" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#78350f">总搜索时间 &lt; 1.5 s</text>
+  <rect x="270" y="330" width="180" height="16" rx="7" fill="#fef3c7"/>
+  <text x="360" y="338" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="9" fill="#78350f">载入频率扫描引擎</text>
+
+  <!-- Card 3: PLMN -->
+  <rect x="490" y="66" width="204" height="290" rx="10" fill="white" stroke="#059669" stroke-width="1.5"/>
+  <rect x="490" y="66" width="204" height="36" rx="10" fill="#059669" opacity=".1"/>
+  <text x="592" y="85" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="11" fill="#065f46" font-weight="700">USIM PLMN 优先级表</text>
+  <text x="592" y="114" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="11" fill="#334155">签约运营商</text>
+  <text x="592" y="138" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="13" fill="#059669" font-weight="800">PLMN 460-01</text>
+  <text x="592" y="156" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#64748b">中国移动 MCC-MNC</text>
+  <line x1="510" y1="168" x2="674" y2="168" stroke="#d1fae5" stroke-width="1"/>
+  <rect x="504" y="174" width="176" height="22" rx="4" fill="#059669" opacity=".12"/>
+  <text x="592" y="185" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#065f46" font-weight="700">频段搜索优先级</text>
+  <text x="540" y="210" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="12" fill="#059669" font-weight="700">1. n78</text>
+  <text x="594" y="210" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#64748b">3.5GHz 主力</text>
+  <text x="540" y="232" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="12" fill="#0891b2">2. n41</text>
+  <text x="594" y="232" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#64748b">2.5GHz 覆盖</text>
+  <text x="540" y="254" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="12" fill="#94a3b8">3. n1</text>
+  <text x="594" y="254" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#64748b">2.1GHz 回退</text>
+  <text x="540" y="276" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="12" fill="#94a3b8">4. n3</text>
+  <text x="594" y="276" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#64748b">1.8GHz 补充</text>
+  <rect x="503" y="287" width="178" height="36" rx="6" fill="#f0fdf4"/>
+  <text x="592" y="299" text-anchor="middle" dominant-baseline="central"
+        font-family="Georgia,serif" font-size="10" fill="#064e3b">PLMN 过滤：排除 60% 频段</text>
+  <text x="592" y="315" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="10" fill="#059669" font-weight="700">直接跳过非签约频段</text>
+  <rect x="502" y="330" width="180" height="16" rx="7" fill="#d1fae5"/>
+  <text x="592" y="338" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="9" fill="#065f46">驱动 RF 频段切换器</text>
+
+  <!-- Bottom bar -->
+  <rect x="28" y="370" width="664" height="28" rx="6" fill="#1d4ed8" opacity=".06"/>
+  <text x="360" y="384" text-anchor="middle" dominant-baseline="central"
+        font-family="SF Mono,Consolas,monospace" font-size="11" fill="#1e3a5f" font-weight="600">
+    三级先验过滤：搜索时间从 &gt;6min 压缩至 &lt;2s &#160; | &#160; 所有字典就绪，开始 RF 扫描</text>
+</svg>`;
+}
+
+/* ── Viz Router ──────────────────────────────────────────────── */
+Engine.renderVizSVG = function(subIdx) {
+  if (subIdx === 0) return renderBlackboard();
+  if (subIdx === 1) return renderClockTree();
+  if (subIdx === 2) return renderPriorDict();
+  return renderBlackboard();
+};
+
+Engine.onAfterRender = function(subIdx) {
+  if (subIdx === 1) {
+    Engine.ctxSet('tc_ns', 0.509);
+    setTimeout(replayClockAnim, 400);
+  }
+};
+
+Engine.boot({ stageIdx: 0 });
+</script>
+</body>
+</html>

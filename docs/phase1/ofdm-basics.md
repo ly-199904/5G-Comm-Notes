@@ -99,6 +99,8 @@ $$
 
 整个物理层最复杂的信号处理，在数学上简化为一次 FFT 运算。
 
+<OFDMModulationExplainer />
+
 #### 2.3 子载波正交性条件
 
 两个相邻子载波 $k$ 和 $k'$ 在一个符号周期内的内积：
@@ -233,6 +235,8 @@ $$
 | **覆盖** | 受限（UE 功率上限）| 优（相同功率覆盖更远）|
 | **适用场景** | 小区内部、eMBB 高速率 | 小区边缘、覆盖受限、NTN |
 | **5G NR 使用** | DL 必选；UL 可选 | UL 可选（`transformPrecoding-Enabled`）|
+
+<PAPRComparisonChart />
 
 **NTN 覆盖改善的量化推导**：
 

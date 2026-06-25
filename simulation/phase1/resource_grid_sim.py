@@ -22,10 +22,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from dataclasses import dataclass, field
+
+# 中文字体
+plt.rcParams['font.sans-serif'] = ['Microsoft YaHei', 'SimHei', 'Noto Sans SC', 'DejaVu Sans']
+plt.rcParams['axes.unicode_minus'] = False
 from typing import Optional
 import warnings
 import os
-OUTPUT_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'output')
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 全局常量
@@ -252,7 +257,7 @@ class SSBConfig:
 # ─────────────────────────────────────────────────────────────────────────────
 
 def calculate_point_a(
-    gscn_arfcn: int,
+    ssb_arfcn: int,
     k_ssb: int,
     offset_to_point_a: int,
     ssb_scs_khz: float = 30.0,
@@ -263,7 +268,7 @@ def calculate_point_a(
     从已知参数计算 Point A
 
     参数：
-        gscn_arfcn      : absoluteFrequencySSB 的 ARFCN
+        ssb_arfcn      : absoluteFrequencySSB 的 ARFCN
         k_ssb           : ssb-SubcarrierOffset（子载波数，参考 SCS 步长）
         offset_to_point_a: offsetToPointA（参考 SCS 的 RB 数）
         ssb_scs_khz     : SSB 的 SCS（kHz）
@@ -277,7 +282,7 @@ def calculate_point_a(
                   f_PointA = f_ssb_rb0 - k_ssb × SCS_ref - offsetToPointA × 12 × SCS_ref
     """
     # Step 1
-    f_ssb_center_mhz = arfcn_to_freq_mhz(gscn_arfcn)
+    f_ssb_center_mhz = arfcn_to_freq_mhz(ssb_arfcn)
 
     # Step 2
     ssb_half_bw_mhz = 10 * 12 * ssb_scs_khz / 1000.0   # 10 RB（SSB = 20 RB，取一半）
@@ -290,7 +295,7 @@ def calculate_point_a(
     point_a_arfcn = freq_mhz_to_arfcn(f_point_a_mhz)
 
     result = {
-        "gscn_arfcn"       : gscn_arfcn,
+        "ssb_arfcn"       : ssb_arfcn,
         "f_ssb_center_mhz" : f_ssb_center_mhz,
         "f_ssb_rb0_mhz"    : f_ssb_rb0_mhz,
         "k_ssb"            : k_ssb,
@@ -304,7 +309,7 @@ def calculate_point_a(
         print(f"\n{sep}")
         print(f"Point A 计算（38.211 §4.4.4.2）")
         print(sep)
-        print(f"  输入 ARFCN (GSCN)         = {gscn_arfcn}")
+        print(f"  输入 SSB ARFCN            = {ssb_arfcn}")
         print(f"  SSB 中心频率 (Step 1)      = {f_ssb_center_mhz:.4f} MHz")
         print(f"  SSB 最低子载波 (Step 2)    = {f_ssb_rb0_mhz:.4f} MHz")
         print(f"  k_SSB 偏移                = {k_offset_mhz:.4f} MHz")
@@ -565,7 +570,7 @@ if __name__ == "__main__":
     # ── 2. Point A 计算（ShareTechnote Example 02 完全复现）────────────────
     print("\n【场景 A】ShareTechnote Example 02 复现")
     result = calculate_point_a(
-        gscn_arfcn        = 629952,   # GSCN=7811
+        ssb_arfcn        = 629952,   # ARFCN of SSB (from GSCN=7811)
         k_ssb             = 0,
         offset_to_point_a = 30,
         ssb_scs_khz       = 30.0,

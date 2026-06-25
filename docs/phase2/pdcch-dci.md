@@ -319,7 +319,7 @@ DCI format 1_1（DL 调度，C-RNTI 加扰）字段清单：
 │ Downlink assignment index │ 1/2 bits  │ DAI（FDD=1b，TDD=2b）   │
 │ TPC for PUCCH             │ 2 bits    │ HARQ-ACK 功率控制        │
 │ PUCCH resource indicator  │ 3 bits    │ HARQ-ACK 用的 PUCCH 资源│
-│ PDSCH-to-HARQ timing      │ 3 bits    │ K1：PDSCH→HARQ-ACK 时隙 │
+│ PDSCH-to-HARQ timing      │ 3 bits    │ K1 索引，查 dl-DataToUL-ACK 表（取值 0~15）│
 │ Antenna ports             │ 4/5/6 bits│ DMRS 端口配置            │
 │ TCI                       │ 3 bits    │ TCI state（波束指向）    │
 │ SRS request               │ 2/3 bits  │ 触发 SRS 上行探测        │
@@ -375,7 +375,7 @@ $$
 
 | 字段 | 原含义 | NTN 有效值 |
 |---|---|---|
-| K1（PDSCH→HARQ-ACK）| 1~8 slots | K1 + K_offset（可达数十 slots）|
+| K1（PDSCH→HARQ-ACK）| 3-bit 索引，查表取值 0~15 slots | K1 + K_offset（可达数十 slots）|
 | K2（DCI→PUSCH）| 1~32 slots | K2 + K_offset |
 | PDCCH-to-PDSCH | 相对位置 | 不受 K-offset 影响（同 slot 内）|
 
@@ -619,7 +619,7 @@ $$N_{UE,max} = \lfloor 18 / 4 \rfloor = \mathbf{4 \text{ 个 UE}}$$（同时调�
 > LEO NTN 网络，μ=1（SCS=30kHz），卫星轨道高度 1200km，UE 仰角 45°。
 >
 > (a) 计算单程传播时延（ms）
-> (b) DCI format 1_1 中 K1 字段可编码值为 1~8 slots。若不使用 K-offset，最大 K1 = 8 slots 能否覆盖 HARQ RTT？
+> (b) DCI format 1_1 中 K1 字段为 3-bit，索引到 dl-DataToUL-ACK 表。若 RRC 配置 K1 最大值为 8，不使 用 K-offset，能否覆盖 HARQ RTT？
 > (c) 需要配置多大的 K-offset（slots）？
 
 :::details 💡 展开答案
@@ -636,7 +636,7 @@ $$\tau = \frac{1579}{300} \approx \mathbf{5.26 \text{ ms}}$$
 
 $$\text{RTT} \approx 2 \times 5.26 + 2 = 12.52 \text{ ms}$$
 
-μ=1 slot 时长 = 0.5ms，K1=8 slots = 4ms << 12.52ms
+μ=1 slot 时长 = 0.5ms，RRC 配置 K1_max=8 slots = 4ms << 12.52ms
 
 **不够**，差距约 8.52ms ≈ 17 slots。
 

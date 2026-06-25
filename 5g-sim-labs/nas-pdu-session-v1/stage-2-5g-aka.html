@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Stage 2 · 5G-AKA 鉴权 &amp; 倒生长密钥树</title>
+<link rel="stylesheet" href="design-system.css">
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['$','$'], ['\\(','\\)']] },
+  options: { skipHtmlTags: ['script','noscript','style','textarea'] }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+<style>
+.case-btn { padding:4px 10px;border-radius:5px;font-size:11px;font-family:var(--font-mono);
+            font-weight:700;cursor:pointer;border:1.5px solid var(--border);
+            background:var(--surface);color:var(--text-sec);transition:all .15s; }
+.case-btn.on { background:#d97706;border-color:#d97706;color:white; }
+.ctrl-bar { display:flex;align-items:center;gap:12px;background:var(--surface);
+            border:1px solid var(--border);border-radius:8px;padding:7px 14px;flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script src="stage-data.js"></script>
+<script src="engine.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════
+   Stage 2 · 5G-AKA 鉴权 · 5 sub-steps (0..4)
+   配色（沿用 2.0 网元身份分色）：
+     UE 深slate #334155 / gNB 灰 #94a3b8（透明管道·虚线）
+     AMF 紫 #7c3aed（信令枢纽/SEAF 锚点）
+     AUSF·UDM 金 #d97706（鉴权服务 / 密钥 / 向量 = 钥匙色）
+     答案绿 #059669（鉴权成功·密钥就位·还债里程碑）
+     高光红 #dc2626（验证失败对照 · 黑盒越界）
+   物理诚实：
+     · 上行身份是 SUCI；SUPI 仅在 UDM(SIDF) 解出（承接 S1）。
+     · 链路 K → CK/IK → K_AUSF → K_SEAF → K_AMF → K_gNB；
+       K_gNB 从 K_AMF 派生（非 K_SEAF，少一层即踩坑#13）。
+     · NF 间走 SBA 服务化（HTTP/2 RESTful），非 4G Diameter。
+     · Milenage/SQN 细节 = UDM 内部黑盒（越界灰标）。
+   ═══════════════════════════════════════════════════════════ */
+var C_UE='#334155',  C_UED='#1e293b', C_UEL='#eef2f7',
+    C_GNB='#94a3b8', C_GNBD='#64748b',C_GNBL='#e2e8f0',
+    C_AMF='#7c3aed', C_AMFD='#5b21b6',C_AMFL='#ede9fe',
+    C_KEY='#d97706', C_KEYD='#b45309',C_KEYL='#fff7ed',
+    C_ANS='#059669', C_ANSL='#d1fae5',
+    C_RED='#dc2626', C_REDL='#fee2e2',
+    C_SEC='#475569', C_MUT='#94a3b8';
+
+/* ── 真实 5G-AKA 向量（TS 35.208 Test Set 1 + TS 33.501 Annex A，
+      Milenage 自校验通过 / RES*==XRES*）── */
+var AKA = {
+  supi:'460010123456789', snn:'5G:mnc001.mcc460.3gppnetwork.org',
+  k:'465b5ce8b199b49faa5f0a2ee238a6bc',
+  rand:'23553cbe9637a89d218ae64dae47bf35',
+  autn:'55f328b43577b9b94a9ffac354dfafb3',
+  sqn_ak:'55f328b43577', amfF:'b9b9', mac:'4a9ffac354dfafb3',
+  ck:'b40ba9a3c58b2a05bbf0d987b21bf8cb',
+  ik:'f769bcd751044604127672711c6d3441',
+  ak:'aa689c648370', res:'a54211d5e3ba50bf',
+  resS:'7b1f972f386316cdf85089b140f1eb76',
+  xresS:'7b1f972f386316cdf85089b140f1eb76',
+  hxres:'5b898808a0562aeafa2d9ca3d66e28d9',
+  kausf:'d7daa8d4ae097cf8cb34ab286a3906621e36d4657167d58550e354fe123ddfc1',
+  kseaf:'a70007dd2a49e36cb3d68654297cddf675f44fd8493ae22cfcfe35fa5a5a205f',
+  kamf:'db53a94f15cf7c8612b1acdf356e7019413316281dadfbf6f2cb78545580f683',
+  kgnb:'3ca9f1db915134c7bd86da98ec082fb1f14abd67b9be526706383c3890f8155b',
+  knasenc:'8707bda84deb623f4a60ea3e6407a6d4',
+  knasint:'a45af2051d9515569be4a666aa825bb5',
+};
+function _hx(h,n){ n=n||12; return h.length>n ? h.slice(0,n)+'…' : h; }
+
+/* ── SVG 文本助手（与 Stage 0/1 一致）── */
+function _t(x,y,t,o){ o=o||{};
+  return '<text x="'+x+'" y="'+y+'" '+(o.a?'text-anchor="'+o.a+'" ':'')+
+    'dominant-baseline="central" font-family="SF Mono,Consolas,monospace" '+
+    'font-size="'+(o.s||10)+'" '+(o.w?'font-weight="'+o.w+'" ':'')+
+    'fill="'+(o.f||'#1e293b')+'"'+(o.st?' font-style="italic"':'')+
+    (o.id?' id="'+o.id+'"':'')+(o.op!=null?' opacity="'+o.op+'"':'')+'>'+t+'</text>';
+}
+function _mk(id,c){ return '<marker id="'+id+'" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M1 1L7 4L1 7Z" fill="'+c+'"/></marker>'; }
+function _bg(id){ return '<defs><linearGradient id="'+id+'" x1="0" y1="0" x2="0" y2="1">'+
+  '<stop offset="0" stop-color="#fffdf7"/><stop offset="1" stop-color="#fbf4ea"/></linearGradient></defs>'; }
+function _frame(id){ return '<rect x="12" y="12" width="696" height="456" rx="14" fill="url(#'+id+')" stroke="#f0d9b5" stroke-width="1.5"/>'; }
+function _wrap(s,pt){ return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;padding-top:'+(pt||6)+'px;">'+s+'</div>'; }
+function _wrapC(ctrl,s){ return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;gap:8px;padding-top:10px;">'+ctrl+s+'</div>'; }
+function _vc(){ return document.getElementById('vizContainer'); }
+function _ctx(k,d){ return (window.NR_CTX&&window.NR_CTX.nas&&window.NR_CTX.nas[k]!=null)?window.NR_CTX.nas[k]:d; }
+
+/* 网元盒（母版，与 Stage 0/1 一致）：x,y 左上角 */
+function _nfBox(x,y,w,h,c,cl,abbr,full,o){ o=o||{};
+  var s='';
+  s+='<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="9" fill="'+cl+'" stroke="'+c+'" stroke-width="'+(o.sw||2)+'"'+(o.dash?' stroke-dasharray="'+o.dash+'"':'')+(o.op!=null?' opacity="'+o.op+'"':'')+'/>';
+  s+='<rect x="'+x+'" y="'+y+'" width="'+w+'" height="6" rx="3" fill="'+c+'"'+(o.op!=null?' opacity="'+o.op+'"':'')+'/>';
+  s+=_t(x+w/2, y+h/2-6, abbr, {a:'middle',s:(o.as||16),w:800,f:c});
+  if(full) s+=_t(x+w/2, y+h/2+11, full, {a:'middle',s:(o.fs||7.5),f:C_SEC});
+  return s;
+}
+/* 接口箭头：双端线 + 标签盒 */
+function _iface(x1,y1,x2,y2,c,label,o){ o=o||{};
+  var dash=o.dash?' stroke-dasharray="'+o.dash+'"':'';
+  var s='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+c+'" stroke-width="'+(o.sw||1.8)+'"'+dash+
+        (o.m?' marker-end="url(#'+o.m+')"':'')+(o.m2?' marker-start="url(#'+o.m2+')"':'')+'/>';
+  if(label){ var mx=(x1+x2)/2, my=(y1+y2)/2;
+    s+='<rect x="'+(mx-(o.lw||20))+'" y="'+(my-8)+'" width="'+((o.lw||20)*2)+'" height="16" rx="4" fill="#fff" stroke="'+c+'" stroke-width="1" opacity="0.95"/>';
+    s+=_t(mx, my, label, {a:'middle',s:(o.ls||8.5),w:800,f:c});
+  }
+  return s;
+}
+/* 密钥「钥匙牌」图元（金，可加 id / transform） */
+function _keyTag(id,cx,cy,label,o){ o=o||{}; var w=o.w||64, h=o.h||26, c=o.c||C_KEY, cl=o.cl||C_KEYL;
+  var g='<g id="'+(id||'')+'" transform="translate('+cx+','+cy+')"'+(o.op!=null?' opacity="'+o.op+'"':'')+'>';
+  g+='<rect x="'+(-w/2)+'" y="'+(-h/2)+'" width="'+w+'" height="'+h+'" rx="6" fill="'+cl+'" stroke="'+c+'" stroke-width="1.6"/>';
+  g+=_t(-w/2+9,0,'🔑',{a:'middle',s:9});
+  g+=_t(4,0,label,{a:'middle',s:(o.s||9),w:800,f:o.tf||C_KEYD});
+  g+='</g>';
+  return g;
+}
+
+/* ══════════════════════════════════════════════════════════
+   S2.0 · 双向鉴权直觉（discuss）
+   ══════════════════════════════════════════════════════════ */
+function renderConcept(){
+  var s='<svg viewBox="0 0 720 480" width="100%" height="100%" style="display:block;">';
+  s+=_bg('bg20')+_frame('bg20');
+  s+='<defs>'+_mk('a20a',C_KEY)+_mk('a20b',C_UE)+'</defs>';
+  s+=_t(360,36,'5G-AKA：双方各亮一次「我也握有 K」，但谁都不把 K 说出口',{a:'middle',s:13,w:800,f:C_AMFD});
+
+  /* 左 UE / 右 归属网络，各持同一把 K */
+  s+=_nfBox(46,74,172,116,C_UE,C_UEL,'UE','USIM',{as:18,fs:8});
+  s+='<rect x="68" y="132" width="128" height="46" rx="8" fill="'+C_KEYL+'" stroke="'+C_KEY+'" stroke-width="1.4"/>';
+  s+=_t(132,148,'🔑 共享密钥 K',{a:'middle',s:9,w:800,f:C_KEYD});
+  s+=_t(132,166,'永不离开 USIM',{a:'middle',s:7.5,st:1,f:C_KEYD});
+
+  s+=_nfBox(502,74,172,116,C_KEY,C_KEYL,'归属网络','UDM / AUSF',{as:14,fs:8});
+  s+='<rect x="524" y="132" width="128" height="46" rx="8" fill="'+C_KEYL+'" stroke="'+C_KEY+'" stroke-width="1.4"/>';
+  s+=_t(588,148,'🔑 同一把 K',{a:'middle',s:9,w:800,f:C_KEYD});
+  s+=_t(588,166,'藏在 UDM 深处',{a:'middle',s:7.5,st:1,f:C_KEYD});
+
+  /* 中央两次挑战-应答 */
+  s+=_iface(502,108,222,108,C_KEY,'',{m:'a20b',sw:2});
+  s+='<rect x="262" y="92" width="200" height="17" rx="8" fill="#fff" stroke="'+C_KEY+'" stroke-width="1"/>';
+  s+=_t(362,100,'① 挑战 RAND + AUTN（用 K 算）',{a:'middle',s:8.5,w:800,f:C_KEYD});
+  s+=_t(362,124,'UE 用自己的 K 重算 → 对上 ⇒「网络是真的」',{a:'middle',s:8,st:1,f:C_AMFD});
+
+  s+=_iface(222,156,502,156,C_UE,'',{m:'a20a',sw:2});
+  s+='<rect x="276" y="140" width="172" height="17" rx="8" fill="#fff" stroke="'+C_UE+'" stroke-width="1"/>';
+  s+=_t(362,148,'② 应答 RES*（也用 K 算）',{a:'middle',s:8.5,w:800,f:C_UED});
+  s+=_t(362,180,'网络比对 XRES* → 对上 ⇒「UE 是真的」',{a:'middle',s:8,st:1,f:C_KEYD});
+
+  /* 判决条 */
+  s+='<rect x="200" y="200" width="320" height="30" rx="9" fill="'+C_ANSL+'" stroke="'+C_ANS+'" stroke-width="1.6"/>';
+  s+=_t(360,215,'两边都对得上 → 双向鉴权（mutual authentication）成立',{a:'middle',s:9.5,w:800,f:'#065f46'});
+
+  /* 底部三要点卡 */
+  var cards=[
+    ['对称密钥·零暴露', C_KEY, C_KEYL, ['挑战与应答都用 K 现场计算，','K 本身从不上空口。','拿到 RAND/RES* 也反推不出 K。']],
+    ['双向·非单向', C_AMF, C_AMFL, ['4G 偏重「网络验 UE」；','5G 强制 UE 先验网络（验 AUTN）','—— 这正是毙伪基站的钥匙。']],
+    ['SQN 抗重放', C_ANS, C_ANSL, ['AUTN 内含序列号 SQN：','旧的鉴权报文重放会被','UE 判为「不新鲜」而拒绝。']]
+  ];
+  var cx=40, cw=210;
+  cards.forEach(function(c,i){
+    var x=cx+i*(cw+15);
+    s+='<rect x="'+x+'" y="250" width="'+cw+'" height="160" rx="11" fill="'+c[2]+'" stroke="'+c[1]+'" stroke-width="1.5"/>';
+    s+='<rect x="'+x+'" y="250" width="'+cw+'" height="30" rx="11" fill="'+c[1]+'" opacity="0.13"/>';
+    s+=_t(x+cw/2,266,c[0],{a:'middle',s:10.5,w:800,f:c[1]});
+    c[3].forEach(function(ln,j){ s+=_t(x+14,300+j*22,ln,{s:8.6,f:C_SEC}); });
+  });
+
+  /* 越界灰标 */
+  s+='<rect x="40" y="424" width="640" height="36" rx="9" fill="#f8fafc" stroke="'+C_MUT+'" stroke-width="1.2" stroke-dasharray="5 4"/>';
+  s+=_t(56,442,'越界（黑盒）：',{s:9,w:800,f:C_MUT});
+  s+=_t(150,442,'K 的根、Milenage/TUAK 内核运算、SQN 同步管理皆属 UDM 内部，沙盘只示「算出什么」不示「怎么算」。',{s:8.2,f:C_SEC});
+  s+='</svg>';
+  return _wrap(s,8);
+}
+
+/* ══════════════════════════════════════════════════════════
+   S2.1 · 取鉴权向量：SBA 调用链 AMF→AUSF→UDM（sim·动画）
+   ══════════════════════════════════════════════════════════ */
+var LANE2={ ue:96, amf:268, ausf:452, udm:632 };
+function renderVectorFetch(){
+  var ctrl='<div class="ctrl-bar"><span style="font-size:11px;font-weight:700;color:'+C_SEC+';">SBA 服务化调用链</span>'+
+    '<button class="case-btn" id="vfBtn" onclick="vfPlay()">▶ 播放取向量流程</button>'+
+    '<span style="font-size:10px;color:'+C_MUT+';">HTTP/2 · JSON · 非 4G Diameter</span></div>';
+  var s='<svg viewBox="0 0 720 432" width="100%" height="100%" style="display:block;">';
+  s+=_bg('bg21')+_frame('bg21');
+  s+='<defs>'+_mk('a21s',C_KEY)+_mk('a21b',C_AMF)+'</defs>';
+  s+=_t(360,34,'取鉴权向量：AMF 按「服务名」逐跳调用 AUSF / UDM',{a:'middle',s:13,w:800,f:C_AMFD});
+
+  /* 顶部 SBA 总线（贯穿 CP 三网元 AMF/AUSF/UDM） */
+  s+='<rect x="'+(LANE2.amf-10)+'" y="58" width="'+(LANE2.udm+10-(LANE2.amf-10))+'" height="6" rx="3" fill="url(#busG21)"/>';
+  s+='<defs><linearGradient id="busG21" x1="0" y1="0" x2="1" y2="0">'+
+     '<stop offset="0" stop-color="'+C_AMF+'"/><stop offset="1" stop-color="'+C_KEY+'"/></linearGradient></defs>';
+  s+=_t((LANE2.amf+LANE2.udm)/2,50,'SBA 服务化总线（CP 内部 · HTTP/2 RESTful）',{a:'middle',s:8,st:1,f:C_AMF});
+
+  /* 泳道头 + 生命线 */
+  var heads=[
+    [LANE2.ue,  C_UE, C_UEL, 'UE','终端',null,false],
+    [LANE2.amf, C_AMFD,C_AMFL,'AMF','SEAF·锚点',null,true],
+    [LANE2.ausf,C_KEY, C_KEYL,'AUSF','鉴权服务器',null,true],
+    [LANE2.udm, C_KEY, C_KEYL,'UDM','SIDF+向量源',null,true]
+  ];
+  heads.forEach(function(h){
+    s+=_nfBox(h[0]-52,70,104,46,h[1],h[2],h[3],h[4],{as:14,fs:7,sw:1.8});
+    if(h[6]) s+='<line x1="'+h[0]+'" y1="61" x2="'+h[0]+'" y2="70" stroke="'+h[1]+'" stroke-width="1.6"/>'; /* 接总线 */
+    s+='<line x1="'+h[0]+'" y1="116" x2="'+h[0]+'" y2="404" stroke="'+h[1]+'" stroke-width="1.2" stroke-dasharray="4 5" opacity="0.5"/>';
+  });
+
+  /* 调用①：AMF→AUSF Nausf_UEAuthentication */
+  s+=_iface(LANE2.amf,150,LANE2.ausf,150,C_AMF,'',{m:'a21b',sw:1.8});
+  s+=_t((LANE2.amf+LANE2.ausf)/2,138,'① Nausf_UEAuthentication',{a:'middle',s:8.5,w:800,f:C_AMFD});
+  s+=_t((LANE2.amf+LANE2.ausf)/2,164,'(SUCI, SN-name)',{a:'middle',s:7.6,f:C_SEC});
+
+  /* 调用②：AUSF→UDM Nudm_UEAuthentication_Get */
+  s+=_iface(LANE2.ausf,188,LANE2.udm,188,C_KEY,'',{m:'a21s',sw:1.8});
+  s+=_t((LANE2.ausf+LANE2.udm)/2,176,'② Nudm_UEAuthentication_Get',{a:'middle',s:8,w:800,f:C_KEYD});
+
+  /* UDM 内部黑盒处理 */
+  s+='<rect x="'+(LANE2.udm-78)+'" y="206" width="156" height="86" rx="9" fill="#fff" stroke="'+C_KEY+'" stroke-width="1.4"/>';
+  s+=_t(LANE2.udm,220,'UDM 内部（黑盒）',{a:'middle',s:8.5,w:800,f:C_KEYD});
+  s+=_t(LANE2.udm,236,'• SIDF 私钥解 SUCI→SUPI',{a:'middle',s:7.4,f:C_SEC});
+  s+=_t(LANE2.udm,250,'  （还清 S1 的约定 ✓）',{a:'middle',s:7,st:1,f:C_ANS});
+  s+=_t(LANE2.udm,265,'• Milenage 生成向量',{a:'middle',s:7.4,f:C_SEC});
+  s+=_t(LANE2.udm,279,'• 派生 K_AUSF',{a:'middle',s:7.4,f:C_SEC});
+
+  /* 回程③：UDM→AUSF 5G HE AV */
+  s+=_iface(LANE2.udm,312,LANE2.ausf,312,C_KEY,'',{m:'a21s',sw:1.8});
+  s+=_t((LANE2.ausf+LANE2.udm)/2,300,'③ 5G HE AV',{a:'middle',s:8,w:800,f:C_KEYD});
+  s+=_t((LANE2.ausf+LANE2.udm)/2,326,'RAND,AUTN,XRES*,K_AUSF',{a:'middle',s:6.9,f:C_SEC});
+
+  /* AUSF 加工 + 回程④：AUSF→AMF 5G SE AV */
+  s+='<rect x="'+(LANE2.ausf-66)+'" y="338" width="132" height="34" rx="8" fill="'+C_KEYL+'" stroke="'+C_KEY+'" stroke-width="1.2"/>';
+  s+=_t(LANE2.ausf,350,'AUSF 算 HXRES*、K_SEAF',{a:'middle',s:7,w:700,f:C_KEYD});
+  s+=_t(LANE2.ausf,363,'并「扣下」K_SEAF 暂不发',{a:'middle',s:6.6,st:1,f:C_RED});
+  s+=_iface(LANE2.ausf,390,LANE2.amf,390,C_AMF,'',{m:'a21b',sw:1.8});
+  s+=_t((LANE2.amf+LANE2.ausf)/2,392,'④ 5G SE AV',{a:'middle',s:8,w:800,f:C_AMFD});
+  s+=_t((LANE2.amf+LANE2.ausf)/2,378,'RAND, AUTN, HXRES*',{a:'middle',s:6.9,f:C_SEC});
+
+  /* 动画令牌 */
+  s+='<circle id="vfPkt" cx="'+LANE2.amf+'" cy="150" r="7" fill="'+C_ANS+'" opacity="0"/>';
+
+  /* 飞行 SUCI 标 */
+  s+='<rect x="'+(LANE2.ue-44)+'" y="150" width="88" height="18" rx="6" fill="'+C_ANSL+'" stroke="'+C_ANS+'" stroke-width="1"/>';
+  s+=_t(LANE2.ue,159,'SUCI（来自 S1）',{a:'middle',s:7,w:700,f:'#065f46'});
+  s+=_iface(LANE2.ue,150,LANE2.amf-52,150,C_GNBD,'',{sw:1.4,dash:'4 3'});
+  s+='</svg>';
+  return _wrapC(ctrl,s);
+}
+function vfPlay(){
+  var pkt=document.getElementById('vfPkt'); if(!pkt) return;
+  /* 路径：AMF(268,150)→AUSF(452,150)→UDM(632,188)→AUSF(452,312)→AMF(268,390) */
+  var pts=[[LANE2.amf,150],[LANE2.ausf,150],[LANE2.udm,188],[LANE2.ausf,312],[LANE2.amf,390]];
+  var seg=[],tot=0;
+  for(var i=0;i<pts.length-1;i++){var L=Math.hypot(pts[i+1][0]-pts[i][0],pts[i+1][1]-pts[i][1]);seg.push(L);tot+=L;}
+  var dur=2600,t0=null;
+  var logs=[
+    '[SBA] AMF → Nausf_UEAuthentication(AUSF)：发起鉴权 (SUCI, SN-name)。',
+    '[SBA] AUSF → Nudm_UEAuthentication_Get(UDM)：请求鉴权向量。',
+    '[UDM] SIDF 私钥解 SUCI → SUPI；Milenage 生成向量并派生 K_AUSF（内部黑盒）。',
+    '[SBA] UDM → AUSF：返回 5G HE AV (RAND, AUTN, XRES*, K_AUSF)。',
+    '[SBA] AUSF → AMF：返回 5G SE AV (RAND, AUTN, HXRES*)；K_SEAF 暂扣留待确认。'
+  ];
+  var fired=[false,false,false,false,false];
+  function at(d){ for(var i=0;i<seg.length;i++){ if(d<=seg[i]||i===seg.length-1){var f=seg[i]?d/seg[i]:0;
+      if(!fired[i]){fired[i]=true;Engine.LogEngine.inject(logs[i]);}
+      return [pts[i][0]+(pts[i+1][0]-pts[i][0])*f, pts[i][1]+(pts[i+1][1]-pts[i][1])*f];} d-=seg[i]; }
+    return pts[pts.length-1]; }
+  pkt.setAttribute('opacity','1');
+  function step(ts){ if(!t0)t0=ts; var p=Math.min(1,(ts-t0)/dur); var pos=at(p*tot);
+    pkt.setAttribute('cx',pos[0]); pkt.setAttribute('cy',pos[1]);
+    if(p<1){ Engine.addTimer(requestAnimationFrame(step)); }
+    else { pkt.setAttribute('opacity','0'); if(!fired[4]){Engine.LogEngine.inject(logs[4]);} }
+  }
+  Engine.addTimer(requestAnimationFrame(step));
+}
+
+/* ══════════════════════════════════════════════════════════
+   S2.2 · 挑战应答：RAND/AUTN 下发 → UE 验真伪 + 算 RES*（sim·里程碑）
+   ══════════════════════════════════════════════════════════ */
+function renderChallenge(){
+  var s='<svg viewBox="0 0 720 480" width="100%" height="100%" style="display:block;">';
+  s+=_bg('bg22')+_frame('bg22');
+  s+='<defs>'+_mk('a22d',C_AMF)+_mk('a22u',C_UE)+_mk('a22ok',C_ANS)+'</defs>';
+  s+=_t(360,34,'挑战应答：网络发 RAND/AUTN，UE 先验真伪再回 RES*',{a:'middle',s:13,w:800,f:C_AMFD});
+
+  /* 两端 */
+  s+=_nfBox(40,56,120,44,C_AMFD,C_AMFL,'AMF','SEAF',{as:14,fs:7,sw:1.8});
+  s+=_nfBox(560,56,120,44,C_UE,C_UEL,'UE','USIM',{as:14,fs:7,sw:1.8});
+
+  /* ① 下行 Authentication Request（RAND,AUTN） */
+  s+=_iface(160,78,560,78,C_AMF,'',{m:'a22d',sw:1.9});
+  s+=_t(360,68,'① Authentication Request',{a:'middle',s:9,w:800,f:C_AMFD});
+  s+='<rect x="206" y="86" width="308" height="34" rx="6" fill="#fff" stroke="'+C_AMF+'" stroke-width="1.2"/>';
+  s+=_t(214,97,'RAND = '+_hx(AKA.rand,16),{s:7.8,f:C_AMFD});
+  s+=_t(214,111,'AUTN = '+_hx(AKA.autn,16),{s:7.8,f:C_AMFD});
+
+  /* UE 验证盒 */
+  s+='<rect x="380" y="132" width="300" height="170" rx="10" fill="'+C_UEL+'" stroke="'+C_UE+'" stroke-width="1.5"/>';
+  s+=_t(530,148,'UE / USIM：先验网络真伪',{a:'middle',s:9.5,w:800,f:C_UED});
+  /* AUTN 拆解 */
+  s+=_t(396,167,'拆 AUTN = (SQN&#8853;AK) ‖ AMF字段 ‖ MAC',{s:8,w:700,f:C_UED});
+  var seg=[['SQN&#8853;AK',AKA.sqn_ak,C_SEC,120],['AMF字段',AKA.amfF,C_MUT,44],['MAC',_hx(AKA.mac,12),C_AMF,90]];
+  var bx=396;
+  seg.forEach(function(g){ s+='<rect x="'+bx+'" y="177" width="'+g[3]+'" height="30" rx="5" fill="#fff" stroke="'+g[2]+'" stroke-width="1.2"/>';
+    s+=_t(bx+g[3]/2,188,g[0],{a:'middle',s:6.4,f:C_MUT}); s+=_t(bx+g[3]/2,200,g[1],{a:'middle',s:7.4,w:800,f:g[2]}); bx+=g[3]+6; });
+  s+=_t(396,218,'* AMF字段 = 鉴权管理字段(Auth Mgmt Field)，≠ 左侧网元 AMF',{s:6.4,st:1,f:C_MUT});
+  s+=_t(396,234,'• 用 K 算 AK → 还原 SQN，查「是否新鲜」（抗重放）',{s:7.7,f:C_SEC});
+  s+=_t(396,249,'• 用 K 算 XMAC，与收到的 MAC 比对：',{s:7.7,f:C_SEC});
+  s+='<rect x="412" y="259" width="252" height="22" rx="6" fill="'+C_ANSL+'" stroke="'+C_ANS+'" stroke-width="1.3" id="s22macbox" opacity="0.3"/>';
+  s+=_t(538,270,'XMAC == MAC ✓ → 网络可信（非伪基站）',{a:'middle',s:8,w:800,f:'#065f46',id:'s22macok',op:0.3});
+  s+=_t(396,294,'• 通过后再算 RES → RES*（A.4）',{s:7.7,f:C_SEC});
+
+  /* ② 上行 Authentication Response（RES*） */
+  s+=_iface(560,322,160,322,C_UE,'',{m:'a22u',sw:1.9});
+  s+=_t(360,312,'② Authentication Response',{a:'middle',s:9,w:800,f:C_UED});
+  s+='<rect x="234" y="330" width="252" height="20" rx="6" fill="#fff" stroke="'+C_UE+'" stroke-width="1.2"/>';
+  s+=_t(360,340,'RES* = '+_hx(AKA.resS,16),{a:'middle',s:7.8,w:700,f:C_UED});
+
+  /* 网络两级比对 */
+  s+='<rect x="40" y="362" width="300" height="92" rx="10" fill="'+C_AMFL+'" stroke="'+C_AMF+'" stroke-width="1.4"/>';
+  s+=_t(190,377,'网络侧：两级比对',{a:'middle',s:9,w:800,f:C_AMFD});
+  s+=_t(54,396,'AMF 快筛：HRES*(RES*) =?= HXRES*',{s:7.6,f:C_SEC});
+  s+=_t(54,410,'  HXRES* = '+_hx(AKA.hxres,14),{s:7,f:C_MUT});
+  s+=_t(54,426,'AUSF 终判：RES* =?= XRES*（权威）',{s:7.6,w:700,f:C_KEYD});
+  s+=_t(54,440,'  XRES* = '+_hx(AKA.xresS,14),{s:7,f:C_MUT});
+
+  /* 里程碑判决 */
+  s+='<rect x="356" y="362" width="324" height="92" rx="10" fill="'+C_ANSL+'" stroke="'+C_ANS+'" stroke-width="1.8" id="s22done" opacity="0.35"/>';
+  s+=_t(518,384,'✓ 双向鉴权成立',{a:'middle',s:12,w:800,f:'#065f46',id:'s22done2',op:0.35});
+  s+=_t(518,406,'UE 已确认网络真伪；网络已确认 UE 真伪。',{a:'middle',s:8,f:C_SEC,id:'s22done3',op:0.35});
+  s+=_t(518,424,'AUSF 此刻才把 K_SEAF 交给 AMF →',{a:'middle',s:7.8,w:700,f:C_KEYD,id:'s22done4',op:0.35});
+  s+=_t(518,440,'下一步：长出整棵密钥树。',{a:'middle',s:7.8,st:1,f:C_AMFD,id:'s22done5',op:0.35});
+  s+='</svg>';
+  return _wrap(s,6);
+}
+/* S2.2 动画：MAC 验证盒点亮 → 判决条点亮 */
+function challengeAnim(){
+  var macbox=document.getElementById('s22macbox'),macok=document.getElementById('s22macok');
+  var ids=['s22done','s22done2','s22done3','s22done4','s22done5'];
+  if(!macbox) return;
+  Engine.LogEngine.inject('[5GMM] AMF → UE：Authentication Request (RAND, AUTN, ngKSI, ABBA)。');
+  Engine.addTimer(setTimeout(function(){
+    macbox.setAttribute('opacity','1'); if(macok)macok.setAttribute('opacity','1');
+    Engine.LogEngine.inject('[USIM] 验 AUTN：XMAC == MAC ✓，SQN 新鲜 ✓ → 网络可信（非伪基站）。');
+  },700));
+  Engine.addTimer(setTimeout(function(){
+    Engine.LogEngine.inject('[5GMM] UE → AMF：Authentication Response (RES*)。');
+    Engine.LogEngine.inject('[SEAF] AMF 快筛 HRES* == HXRES* ✓；[AUSF] 终判 RES* == XRES* ✓。');
+  },1500));
+  Engine.addTimer(setTimeout(function(){
+    ids.forEach(function(id){var el=document.getElementById(id);if(el)el.setAttribute('opacity','1');});
+    Engine.LogEngine.inject('[SUCCESS] 5G-AKA 双向鉴权成立；AUSF 释放 K_SEAF 给 SEAF/AMF。');
+  },2300));
+}
+
+/* ══════════════════════════════════════════════════════════
+   S2.3 · 倒生长密钥树 K→K_AUSF→K_SEAF→K_AMF→K_gNB（sim·里程碑）
+   ══════════════════════════════════════════════════════════ */
+var KTREE=[
+  ['K',      '465b…a6bc',                'USIM / UDM(ARPF)', '永久根 · 绝不离开',  C_KEYD, '—'],
+  ['K_AUSF', _hx('d7daa8d4ae097cf8',12), 'AUSF',             'KDF · 绑 SN-name',   C_KEY,  'FC=0x6A'],
+  ['K_SEAF', _hx('a70007dd2a49e36c',12), 'SEAF（AMF 内）',   'KDF · 锚点密钥',     C_KEY,  'FC=0x6C'],
+  ['K_AMF',  _hx('db53a94f15cf7c86',12), 'AMF',              'KDF · 绑 SUPI+ABBA', C_AMF,  'FC=0x6D'],
+  ['K_gNB',  _hx('3ca9f1db915134c7',12), '→ 空投给 gNB',     'KDF · 绑 NAS COUNT', C_ANS,  'FC=0x6E']
+];
+function renderKeyTree(){
+  var s='<svg viewBox="0 0 720 480" width="100%" height="100%" style="display:block;">';
+  s+=_bg('bg23')+_frame('bg23');
+  s+='<defs>'+_mk('a23',C_KEY)+_mk('a23g',C_ANS)+'</defs>';
+  s+=_t(360,32,'倒生长密钥树：一把 K，逐层 KDF 长出整棵主链',{a:'middle',s:13,w:800,f:C_AMFD});
+
+  /* 左：纵向主链（5 层）K → K_AUSF → K_SEAF → K_AMF → K_gNB */
+  var x=58, w=232, top=58, gap=58, h=34;
+  KTREE.forEach(function(k,i){
+    var y=top+i*gap, isAns=(k[4]===C_ANS), c=k[4], cl=isAns?C_ANSL:(c===C_AMF?C_AMFL:C_KEYL);
+    if(i>0){
+      var pb=y-gap+h;                                  /* 上一节点底边 */
+      s+='<line x1="'+(x+w/2)+'" y1="'+pb+'" x2="'+(x+w/2)+'" y2="'+y+'" stroke="'+C_KEY+'" stroke-width="1.8" marker-end="url(#a23)" id="ktl'+i+'" opacity="0.25"/>';
+      s+='<rect x="'+(x+w/2+8)+'" y="'+(pb+4)+'" width="120" height="16" rx="5" fill="#fff" stroke="'+C_KEY+'" stroke-width="1" id="ktk'+i+'" opacity="0.25"/>';
+      var note=k[5]+(i===1?' · 先 Milenage 出 CK/IK':'');
+      s+=_t(x+w/2+14,pb+12,note,{s:6.8,w:700,f:C_KEYD,id:'ktkt'+i,op:0.25});
+    }
+    s+='<g id="ktn'+i+'" opacity="'+(i===0?1:0.25)+'">';
+    s+='<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="7" fill="'+cl+'" stroke="'+c+'" stroke-width="'+(isAns?2:1.5)+'"/>';
+    s+=_t(x+12,y+h/2,k[0],{s:10,w:800,f:c});
+    s+=_t(x+98,y+12,k[1],{s:7,f:C_MUT});
+    s+=_t(x+98,y+24,k[3],{s:7,f:C_SEC});
+    s+='</g>';
+  });
+
+  /* 右：说明面板 */
+  s+='<rect x="312" y="58" width="368" height="214" rx="11" fill="#fff" stroke="'+C_KEY+'" stroke-width="1.3"/>';
+  s+=_t(330,76,'每层「绑」进新上下文，逐级隔离',{s:9.5,w:800,f:C_KEYD});
+  var rows=[
+    ['K_AUSF','经 Milenage(CK/IK) 后 KDF；绑 SN-name 锁定「为哪张网」'],
+    ['K_SEAF','锚点密钥，留拜访网络 SEAF；K_AUSF 本身不下发'],
+    ['K_AMF','绑 SUPI + ABBA → 锁定「为哪个用户、哪套安全」'],
+    ['K_gNB','绑 上行 NAS COUNT → 每次新鲜，防重用']
+  ];
+  rows.forEach(function(r,i){ var ry=98+i*26;
+    s+=_t(330,ry,r[0],{s:8.4,w:800,f:(r[0]==='K_gNB'?C_ANS:C_AMFD)});
+    s+=_t(404,ry,r[1],{s:7.4,f:C_SEC});
+  });
+  s+='<line x1="330" y1="206" x2="662" y2="206" stroke="#f0d9b5" stroke-width="1"/>';
+  s+=_t(330,222,'⚠ K_gNB 从 K_AMF 派生（不是 K_SEAF）',{s:8.4,w:800,f:C_RED});
+  s+=_t(330,238,'链路必须 K_SEAF → K_AMF → K_gNB，少一层即物理错误。',{s:7.6,f:C_SEC});
+  s+=_t(330,256,'同源 K_AMF 还派生 K_NASint / K_NASenc（→ Stage 3）。',{s:7.6,st:1,f:C_AMFD});
+
+  /* 右下：UE 与网络对称生长 */
+  s+='<rect x="312" y="282" width="368" height="56" rx="10" fill="'+C_ANSL+'" stroke="'+C_ANS+'" stroke-width="1.4"/>';
+  s+=_t(496,300,'对称生长：UE 与网络各用同一把 K 走同一套 KDF',{a:'middle',s:8.4,w:800,f:'#065f46'});
+  s+=_t(496,320,'→ 两端独立算出完全相同的密钥树，空口从不传任何密钥。',{a:'middle',s:7.6,f:C_SEC});
+
+  /* 底部诚实条 */
+  s+='<rect x="40" y="346" width="640" height="106" rx="11" fill="'+C_KEYL+'" stroke="'+C_KEY+'" stroke-width="1.3"/>';
+  s+=_t(58,364,'倒生长 / 还债（核心）：',{s:10,w:800,f:C_KEYD});
+  s+=_t(58,384,'• 1.0 Stage 8 把 K_gNB 标注「源自 NAS 鉴权（越界）」—— 这条主链的最底层，正是当时欠下的那把。',{s:8.3,f:C_SEC});
+  s+=_t(58,402,'• 「倒生长」：1.0 自顶向下用 K_gNB→K_RRC*/K_UP*；2.0 在这里补上 K_gNB 的来源，根一路扎到 K。',{s:8.3,f:C_SEC});
+  s+=_t(58,420,'• KDF = HMAC-SHA-256；各层只示输入「绑」什么，字节布局（FC/Pi/Li）按 TS 33.501 Annex A。',{s:8.1,f:C_MUT});
+  s+=_t(58,438,'• 本沙盘 hex 为真实运算结果（TS 35.208 Test Set 1 → Annex A 派生，UE/网络两侧一致）。',{s:8.1,w:700,f:'#065f46'});
+  s+='</svg>';
+  return _wrap(s,6);
+}
+/* S2.3 动画：逐层点亮 + ctxSet（写上三层；K_gNB 留到 S2.4 空投时写） */
+function keyTreeAnim(){
+  var n=KTREE.length, i=1;
+  function reveal(){
+    if(i>=n) {
+      /* 写入：K_AUSF / K_SEAF / K_AMF（K_AMF 点亮顶栏；K_gNB 在 S2.4 写）*/
+      Engine.ctxSet('nas.k_ausf', AKA.kausf);
+      Engine.ctxSet('nas.k_seaf', AKA.kseaf);
+      Engine.ctxSet('nas.k_amf',  AKA.kamf);
+      Engine.LogEngine.inject('[KEYTREE] K → CK/IK → K_AUSF → K_SEAF → K_AMF 已就绪（K_AMF 写入上下文，顶栏点亮）。');
+      return;
+    }
+    ['ktl','ktk','ktkt','ktn'].forEach(function(p){var el=document.getElementById(p+i);if(el)el.setAttribute('opacity','1');});
+    Engine.LogEngine.inject('[KDF] 派生 '+KTREE[i][0].replace(/\s/g,'')+' （'+KTREE[i][5]+'，绑 '+KTREE[i][3]+'）。');
+    i++;
+    Engine.addTimer(setTimeout(reveal,650));
+  }
+  Engine.addTimer(setTimeout(reveal,500));
+}
+
+/* ══════════════════════════════════════════════════════════
+   S2.4 · K_gNB 空投：还清 1.0 的债（sim·动画）
+   ══════════════════════════════════════════════════════════ */
+function renderAirdrop(){
+  var s='<svg viewBox="0 0 720 480" width="100%" height="100%" style="display:block;">';
+  s+=_bg('bg24')+_frame('bg24');
+  s+='<defs>'+_mk('a24',C_ANS)+'</defs>';
+  s+=_t(360,34,'空投 K_gNB：把 1.0 Stage 8 欠下的那把钥匙补上',{a:'middle',s:13,w:800,f:C_AMFD});
+
+  /* CP 上方：AMF（持 K_AMF / 派生 K_gNB） */
+  s+='<rect x="40" y="58" width="640" height="96" rx="11" fill="'+C_AMFL+'" stroke="'+C_AMF+'" stroke-width="1.4"/>';
+  s+=_t(58,76,'控制面 · AMF（核心网，紫）',{s:9.5,w:800,f:C_AMFD});
+  s+=_nfBox(70,86,150,56,C_AMF,'#fff','AMF','持 K_AMF',{as:16,fs:7.5});
+  s+=_keyTag('',300,114,'K_AMF',{w:84,c:C_AMF,cl:C_AMFL,tf:C_AMFD});
+  s+=_iface(346,114,430,114,C_AMF,'',{m:'a24',sw:1.6});
+  s+=_t(388,103,'KDF·FC=0x6E',{a:'middle',s:7,w:700,f:C_AMFD});
+  s+=_t(388,127,'绑 NAS COUNT',{a:'middle',s:6.6,st:1,f:C_SEC});
+  s+=_keyTag('s24src',490,114,'K_gNB',{w:88,c:C_ANS,cl:C_ANSL,tf:'#065f46'});
+  s+=_t(596,114,'派生完成 → 待空投',{a:'middle',s:8,st:1,f:C_ANS});
+
+  /* 中段：N2/NGAP 空投通道 */
+  s+='<line x1="535" y1="142" x2="535" y2="318" stroke="'+C_ANS+'" stroke-width="2" stroke-dasharray="6 5"/>';
+  s+='<rect x="556" y="210" width="120" height="40" rx="8" fill="#fff" stroke="'+C_ANS+'" stroke-width="1.2"/>';
+  s+=_t(616,225,'N2 · NGAP',{a:'middle',s:8.5,w:800,f:'#065f46'});
+  s+=_t(616,240,'Initial Context Setup',{a:'middle',s:6.8,f:C_SEC});
+  /* 飞行中的钥匙（动画） */
+  s+=_keyTag('s24fly',535,150,'K_gNB',{w:88,c:C_ANS,cl:C_ANSL,tf:'#065f46',op:0});
+
+  /* RAN 下方：gNB 收钥匙 → 长出 1.0 的 AS 子钥 */
+  s+='<rect x="40" y="322" width="640" height="132" rx="11" fill="'+C_GNBL+'" stroke="'+C_GNBD+'" stroke-width="1.4" stroke-dasharray="6 4"/>';
+  s+=_t(58,340,'接入网 · gNB（1.0 的主场，灰）',{s:9.5,w:800,f:C_GNBD});
+  s+=_nfBox(70,350,150,56,C_GNB,'#f1f5f9','gNB','收下 K_gNB',{as:16,fs:7.5,sw:1.6});
+  s+='<rect id="s24slot" x="470" y="350" width="130" height="56" rx="9" fill="#fff" stroke="'+C_GNBD+'" stroke-width="1.4" stroke-dasharray="4 3"/>';
+  s+=_t(535,372,'K_gNB 槽位',{a:'middle',s:8.5,w:700,f:C_GNBD,id:'s24slott'});
+  s+=_t(535,388,'（空投到位后填入）',{a:'middle',s:6.8,st:1,f:C_MUT,id:'s24slott2'});
+
+  /* gNB 用 K_gNB 派生 1.0 的 AS 子钥 */
+  s+='<g id="s24as" opacity="0.25">';
+  s+=_t(150,418,'派生 1.0 AS 子钥 →',{a:'middle',s:8,w:800,f:C_GNBD});
+  var tags=[['K_RRCint',240,418],['K_RRCenc',340,418],['K_UPint',440,418],['K_UPenc',540,418]];
+  tags.forEach(function(tg){
+    s+='<rect x="'+(tg[1]-44)+'" y="'+(tg[2]-11)+'" width="88" height="22" rx="6" fill="'+C_GNBL+'" stroke="'+C_GNBD+'" stroke-width="1.1"/>';
+    s+=_t(tg[1],tg[2],tg[0],{a:'middle',s:7.6,w:700,f:C_GNBD});
+  });
+  s+='</g>';
+
+  /* 债务清单（右上小角标） */
+  s+='<rect id="s24debt" x="232" y="356" width="140" height="44" rx="8" fill="'+C_REDL+'" stroke="'+C_RED+'" stroke-width="1.3"/>';
+  s+=_t(302,372,'1.0 Stage 8 欠条',{a:'middle',s:8,w:800,f:C_RED,id:'s24debtt'});
+  s+=_t(302,388,'K_gNB「源自 NAS 鉴权(越界)」',{a:'middle',s:6.6,f:C_SEC,id:'s24debtt2'});
+  s+='</svg>';
+  return _wrap(s,8);
+}
+/* S2.4 动画：钥匙从 AMF 沿 N2 通道下落到 gNB 槽位 → 点亮 AS 子钥 + 债务划销 + 写 K_gNB */
+function airdropAnim(){
+  var fly=document.getElementById('s24fly'), slot=document.getElementById('s24slot');
+  var slott=document.getElementById('s24slott'), slott2=document.getElementById('s24slott2');
+  var asg=document.getElementById('s24as'), debt=document.getElementById('s24debt');
+  if(!fly) return;
+  var x=535, y0=150, y1=378, dur=1500, t0=null;
+  Engine.LogEngine.inject('[NGAP] AMF 派生 K_gNB（KDF: K_AMF, UL NAS COUNT, FC=0x6E）。');
+  function step(ts){ if(!t0)t0=ts; var p=Math.min(1,(ts-t0)/dur);
+    var ease=p<0.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
+    fly.setAttribute('opacity', p<0.06?p/0.06:(p>0.94?(1-p)/0.06:1));
+    fly.setAttribute('transform','translate('+x+','+(y0+(y1-y0)*ease)+')');
+    if(p<1){ Engine.addTimer(requestAnimationFrame(step)); }
+    else {
+      fly.setAttribute('opacity','0');
+      if(slot){ slot.setAttribute('stroke-dasharray','0'); slot.setAttribute('fill',C_ANSL); slot.setAttribute('stroke',C_ANS); }
+      if(slott){ slott.textContent='K_gNB ✓ 已就位'; slott.setAttribute('fill','#065f46'); }
+      if(slott2){ slott2.textContent='3ca9f1db…155b'; slott2.setAttribute('fill',C_SEC); }
+      Engine.LogEngine.inject('[NGAP] N2 Initial Context Setup：K_gNB 空投至 gNB（AS 安全上下文就位）。');
+      Engine.addTimer(setTimeout(function(){
+        if(asg) asg.setAttribute('opacity','1');
+        Engine.LogEngine.inject('[AS-SEC] gNB 以 K_gNB 派生 K_RRCint/K_RRCenc/K_UPint/K_UPenc —— 即 1.0 当根用的那批。');
+      },500));
+      Engine.addTimer(setTimeout(function(){
+        if(debt){ debt.setAttribute('fill',C_ANSL); debt.setAttribute('stroke',C_ANS); }
+        var d=document.getElementById('s24debtt'), d2=document.getElementById('s24debtt2');
+        if(d){ d.textContent='欠条 ✓ 已划销'; d.setAttribute('fill','#065f46'); }
+        if(d2){ d2.textContent='K_gNB 来源补齐'; d2.setAttribute('fill',C_SEC); }
+        /* 真正写入上下文：K_gNB（零先验——空投到位才写）*/
+        Engine.ctxSet('nas.k_gnb', AKA.kgnb);
+        Engine.LogEngine.inject('[READY] K_gNB 写入上下文；1.0 Stage 8 的「越界欠条」就此还清。下一步：NAS 安全激活（Stage 3）。');
+      },1100));
+    }
+  }
+  Engine.addTimer(requestAnimationFrame(step));
+}
+
+/* ══════════════════════════════════════════════════════════
+   VIZ ROUTER + HOOKS
+   ══════════════════════════════════════════════════════════ */
+Engine.renderVizSVG = function(subIdx){
+  if(subIdx===0) return renderConcept();
+  if(subIdx===1) return renderVectorFetch();
+  if(subIdx===2) return renderChallenge();
+  if(subIdx===3) return renderKeyTree();
+  if(subIdx===4) return renderAirdrop();
+  return renderConcept();
+};
+Engine.onAfterRender = function(subIdx){
+  if(subIdx===1){ Engine.addTimer(setTimeout(vfPlay, 600)); }
+  if(subIdx===2){ Engine.addTimer(setTimeout(challengeAnim, 400)); }
+  if(subIdx===3){ keyTreeAnim(); }
+  if(subIdx===4){ Engine.addTimer(setTimeout(airdropAnim, 500)); }
+};
+Engine.onStageExit = function(){ /* 定时器由 Engine.clrTimers 统一清理 */ };
+Engine.boot({ stageIdx: 2 });
+</script>
+</body>
+</html>

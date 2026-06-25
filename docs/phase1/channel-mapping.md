@@ -361,7 +361,7 @@ DCI 比特流（Format 0_0 / 1_0 / 0_1 / 1_1 / 2_x）
 | RNTI | 值范围 | 用途 |
 |---|---|---|
 | **C-RNTI** | 0x0001~0xFFBF | UE 专属数据调度（RRC_CONNECTED）|
-| **RA-RNTI** | 0x0001~0xFFFF（特殊计算）| 随机接入响应（RAR）|
+| **RA-RNTI** | 0x0001~0x45FF（38.321 §5.1.3 公式计算）| 随机接入响应（RAR）|
 | **TC-RNTI** | 0x0001~0xFFBF | 临时 C-RNTI（RACH 过程中）|
 | **P-RNTI** | 0xFFFE | 寻呼 Paging |
 | **SI-RNTI** | 0xFFFF | 系统信息 SIB |

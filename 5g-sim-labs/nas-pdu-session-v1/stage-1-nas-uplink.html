@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>Stage 1 · NAS 上行接管 &amp; SUCI</title>
+<link rel="stylesheet" href="design-system.css">
+<script>
+window.MathJax = {
+  tex: { inlineMath: [['$','$'], ['\\(','\\)']] },
+  options: { skipHtmlTags: ['script','noscript','style','textarea'] }
+};
+</script>
+<script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js" async></script>
+</head>
+<body>
+<div id="app"></div>
+<script src="stage-data.js"></script>
+<script src="engine.js"></script>
+<script>
+/* ═══════════════════════════════════════════════════════════
+   Stage 1 · NAS 上行接管 & SUCI · 4 sub-steps (0..3)
+   配色（沿用 2.0 网元身份分色）：
+     UE 深slate #334155 / gNB 灰 #94a3b8（透明管道·虚线）
+     AMF 紫 #7c3aed / UDM·AUSF 金 #d97706
+     答案绿 #059669（里程碑·SUCI 就位）/ 高光红 #dc2626（SUPI 越界·泄密）
+   物理诚实：N1 逻辑接口（穿 gNB 透明转发）；SUPI 绝不上空口；
+            SUCI 仅归属 UDM(SIDF) 能解。
+   ═══════════════════════════════════════════════════════════ */
+var C_UE='#334155',  C_UED='#1e293b', C_UEL='#eef2f7',
+    C_GNB='#94a3b8', C_GNBD='#64748b',C_GNBL='#e2e8f0',
+    C_AMF='#7c3aed', C_AMFD='#5b21b6',C_AMFL='#ede9fe',
+    C_KEY='#d97706', C_KEYD='#b45309',C_KEYL='#fff7ed',
+    C_ANS='#059669', C_ANSL='#d1fae5',
+    C_RED='#dc2626', C_REDL='#fee2e2',
+    C_SEC='#475569', C_MUT='#94a3b8';
+
+/* ── 真实算得的 SUCI（ECIES Profile A · TS 33.501 Annex C；UDM 解密自校验通过）── */
+var SUCI = {
+  supi:'460010123456789', mcc:'460', mnc:'01', msin:'0123456789',
+  ri:'0000', scheme:'1', pkid:'1',
+  udmPub:'ed637135c96a64c7dbf2d2b3ce95ccba…',
+  ephPub:'b25347876c9bc3da', ephPubFull:'b25347876c9bc3dafbad592ac3b10daa41d22ce6ab89feb8eba0ca7fb96ca024',
+  ciph:'2905469c0b', mac:'74b277e6f3982296',
+  nai:'suci-0-460-01-0000-1-1-b25347…2296',
+};
+
+/* ── SVG 文本助手（与 Stage 0 一致）── */
+function _t(x,y,t,o){ o=o||{};
+  return '<text x="'+x+'" y="'+y+'" '+(o.a?'text-anchor="'+o.a+'" ':'')+
+    'dominant-baseline="central" font-family="SF Mono,Consolas,monospace" '+
+    'font-size="'+(o.s||10)+'" '+(o.w?'font-weight="'+o.w+'" ':'')+
+    'fill="'+(o.f||'#1e293b')+'"'+(o.st?' font-style="italic"':'')+
+    (o.id?' id="'+o.id+'"':'')+(o.op!=null?' opacity="'+o.op+'"':'')+'>'+t+'</text>';
+}
+function _mk(id,c){ return '<marker id="'+id+'" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M1 1L7 4L1 7Z" fill="'+c+'"/></marker>'; }
+function _bg(id){ return '<defs><linearGradient id="'+id+'" x1="0" y1="0" x2="0" y2="1">'+
+  '<stop offset="0" stop-color="#faf9ff"/><stop offset="1" stop-color="#f1f0fb"/></linearGradient></defs>'; }
+function _frame(id){ return '<rect x="12" y="12" width="696" height="456" rx="14" fill="url(#'+id+')" stroke="#ddd6fe" stroke-width="1.5"/>'; }
+function _wrap(s,pt){ return '<div style="width:100%;height:100%;display:flex;flex-direction:column;align-items:center;padding-top:'+(pt||6)+'px;">'+s+'</div>'; }
+function _vc(){ return document.getElementById('vizContainer'); }
+function _ctx(k,d){ return (window.NR_CTX&&window.NR_CTX[k]!=null)?window.NR_CTX[k]:d; }
+
+/* 网元盒（母版，与 Stage 0 一致）：x,y 左上角 */
+function _nfBox(x,y,w,h,c,cl,abbr,full,o){ o=o||{};
+  var s='';
+  s+='<rect x="'+x+'" y="'+y+'" width="'+w+'" height="'+h+'" rx="9" fill="'+cl+'" stroke="'+c+'" stroke-width="'+(o.sw||2)+'"'+(o.dash?' stroke-dasharray="'+o.dash+'"':'')+(o.op!=null?' opacity="'+o.op+'"':'')+'/>';
+  s+='<rect x="'+x+'" y="'+y+'" width="'+w+'" height="6" rx="3" fill="'+c+'"'+(o.op!=null?' opacity="'+o.op+'"':'')+'/>';
+  s+=_t(x+w/2, y+h/2-6, abbr, {a:'middle',s:(o.as||16),w:800,f:c});
+  if(full) s+=_t(x+w/2, y+h/2+11, full, {a:'middle',s:(o.fs||7.5),f:C_SEC});
+  return s;
+}
+/* 接口箭头：双端线 + 标签盒 */
+function _iface(x1,y1,x2,y2,c,label,o){ o=o||{};
+  var dash=o.dash?' stroke-dasharray="'+o.dash+'"':'';
+  var s='<line x1="'+x1+'" y1="'+y1+'" x2="'+x2+'" y2="'+y2+'" stroke="'+c+'" stroke-width="'+(o.sw||1.8)+'"'+dash+
+        (o.m?' marker-end="url(#'+o.m+')"':'')+(o.m2?' marker-start="url(#'+o.m2+')"':'')+'/>';
+  if(label){ var mx=(x1+x2)/2, my=(y1+y2)/2;
+    s+='<rect x="'+(mx-(o.lw||20))+'" y="'+(my-8)+'" width="'+((o.lw||20)*2)+'" height="16" rx="4" fill="#fff" stroke="'+c+'" stroke-width="1" opacity="0.95"/>';
+    s+=_t(mx, my, label, {a:'middle',s:(o.ls||8.5),w:800,f:c});
+  }
+  return s;
+}
+/* 密封的 NAS PDU「信件」图元（紫，可加 transform） */
+function _letter(id,cx,cy,opened){
+  var g='<g id="'+(id||'')+'" transform="translate('+cx+','+cy+')">';
+  if(!opened){
+    g+='<rect x="-17" y="-12" width="34" height="24" rx="3" fill="#fff" stroke="'+C_AMF+'" stroke-width="1.8"/>';
+    g+='<path d="M-17 -10 L0 4 L17 -10" fill="none" stroke="'+C_AMF+'" stroke-width="1.6"/>';
+    g+=_t(0,-6,'NAS',{a:'middle',s:6.5,w:800,f:C_AMF});
+  } else {
+    g+='<rect x="-26" y="-15" width="52" height="30" rx="3" fill="'+C_AMFL+'" stroke="'+C_AMF+'" stroke-width="1.8"/>';
+    g+=_t(0,-6,'Registration',{a:'middle',s:6.5,w:800,f:C_AMFD});
+    g+=_t(0,5,'Request',{a:'middle',s:6.5,w:800,f:C_AMFD});
+  }
+  g+='</g>';
+  return g;
+}
+
+/* ══════════════════════════════════════════════════════════
+   S1.0 · 接管 1.0 的密封信：RRC 信封里的 NAS 信
+   ══════════════════════════════════════════════════════════ */
+function renderHandoff(){
+  var s='<svg viewBox="0 0 720 480" width="100%" height="100%" style="display:block;">';
+  s+=_bg('bgH')+_frame('bgH');
+  s+='<defs>'+_mk('arHg',C_GNBD)+_mk('arHa',C_AMF)+'</defs>';
+  s+=_t(360,40,'1.0 的临别赠言：一封密封、写给核心网的信',{a:'middle',s:15,w:800,f:C_AMFD});
+
+  /* 外层 RRC 信封（gNB 可读·灰） */
+  s+='<rect x="70" y="74" width="580" height="200" rx="11" fill="#f8fafc" stroke="'+C_GNBD+'" stroke-width="2"/>';
+  s+='<rect x="70" y="74" width="580" height="26" rx="11" fill="'+C_GNBL+'"/>';
+  s+=_t(86,87,'RRC：RRCSetupComplete',{s:12,w:800,f:C_GNBD});
+  s+=_t(486,87,'AS 层 · gNB 看得懂这层「信封」',{s:9,f:C_SEC});
+  s+=_t(90,118,'selectedPLMN-Identity = 1',{s:9,f:C_MUT});
+  s+=_t(90,134,'registeredAMF / s-NSSAI-List …',{s:9,f:C_MUT});
+
+  /* 内层 NAS 信（仅 AMF 可读·紫·密封） */
+  s+='<rect x="104" y="150" width="512" height="108" rx="9" fill="'+C_AMFL+'" stroke="'+C_AMF+'" stroke-width="2"/>';
+  s+=_t(120,168,'dedicatedNAS-Message',{s:11,w:800,f:C_AMFD});
+  s+='<rect x="430" y="160" width="176" height="17" rx="8" fill="#fff" stroke="'+C_AMF+'" stroke-width="1"/>';
+  s+=_t(518,169,'⟦ 对 gNB 不透明 · 密封 ⟧',{a:'middle',s:8,w:700,f:C_AMF});
+  s+=_t(120,192,'NAS：Registration Request（5GMM）',{s:10.5,w:800,f:C_AMFD});
+  s+=_t(120,212,'5GS registration type = initial',{s:8.8,f:C_SEC});
+  s+=_t(120,228,'5GS mobile identity =',{s:8.8,f:C_SEC});
+  s+=_t(248,228,'SUCI（隐藏身份，下一步细讲）',{s:8.8,w:700,f:C_ANS});
+  s+=_t(120,244,'ngKSI · UE security capabilities …',{s:8.8,f:C_SEC});
+  s+='<circle cx="596" cy="234" r="11" fill="'+C_AMFL+'" stroke="'+C_AMF+'" stroke-width="1.4"/>';
+  s+=_t(596,234,'🔒',{a:'middle',s:11});
+
+  /* 三个角色 */
+  var roles=[
+    [C_UE,C_UEL,'UE','写信人',155,'封装 Registration Request'],
+    [C_GNBD,C_GNBL,'gNB','信使（只读信封）',360,'转发，不拆 NAS 内容'],
+    [C_AMFD,C_AMFL,'AMF','唯一收信人',565,'拆封、解读 NAS']
+  ];
+  roles.forEach(function(r){
+    s+=_nfBox(r[4]-58,300,116,46,r[0],r[1],r[2],'',{as:15,sw:1.8});
+    s+=_t(r[4],360,r[3],{a:'middle',s:9.5,w:800,f:r[0]});
+    s+=_t(r[4],376,r[5],{a:'middle',s:8,st:1,f:C_SEC});
+  });
+  s+=_iface(213,323,302,323,C_GNBD,'',{m:'arHg',sw:1.6});
+  s+=_iface(418,323,507,323,C_AMF,'',{m:'arHa',sw:1.6});
+
+  /* 结论条 */
+  s+='<rect x="40" y="404" width="640" height="56" rx="11" fill="#faf5ff" stroke="'+C_AMF+'" stroke-width="1.4"/>';
+  s+=_t(60,424,'核心隐喻：',{s:11,w:800,f:C_AMFD});
+  s+=_t(60,444,'信封（RRC/AS 层）gNB 读得懂；信（NAS/5GMM 层）只有 AMF 拆得开 —— 这正是「N1 是逻辑接口」的由来。',{s:9.3,f:C_SEC});
+  s+='</svg>';
+  return _wrap(s,8);
+}
+
+/* ══════════════════════════════════════════════════════════
+   S1.1 · NAS 上行三段接力（泳道 + 动画信件）
+   ══════════════════════════════════════════════════════════ */
+var LANE={ ue:140, gnb:360, amf:585 };
+function renderRelay(){
+  var s='<svg viewBox="0 0 720 480" width="100%" height="100%" style="display:block;">';
+  s+=_bg('bgR')+_frame('bgR');
+  s+='<defs>'+_mk('arUu',C_GNBD)+_mk('arN2',C_AMF)+'</defs>';
+  s+=_t(360,36,'NAS 上行三段接力：UE → gNB → AMF',{a:'middle',s:14,w:800,f:C_AMFD});
+
+  /* N1 逻辑弧（穿 gNB 透明转发） */
+  s+='<path d="M'+LANE.ue+' 70 C '+LANE.ue+' 30, '+LANE.amf+' 30, '+LANE.amf+' 70" fill="none" stroke="'+C_AMF+'" stroke-width="1.6" stroke-dasharray="5 4"/>';
+  s+='<rect x="276" y="40" width="168" height="17" rx="8" fill="#faf5ff" stroke="'+C_AMF+'" stroke-width="1"/>';
+  s+=_t(360,49,'N1 · NAS 逻辑接口（UE↔AMF）',{a:'middle',s:8.5,w:800,f:C_AMF});
+
+  /* 泳道头 + 生命线 */
+  var heads=[
+    [LANE.ue, C_UE, C_UEL, 'UE','终端', null],
+    [LANE.gnb,C_GNBD,C_GNBL,'gNB','透明管道','7 4'],
+    [LANE.amf,C_AMFD,C_AMFL,'AMF','信令枢纽', null]
+  ];
+  heads.forEach(function(h){
+    s+=_nfBox(h[0]-56,72,112,48,h[1],h[2],h[3],h[4],{as:15,fs:7.5,sw:1.8,dash:h[5]});
+    s+='<line x1="'+h[0]+'" y1="120" x2="'+h[0]+'" y2="430" stroke="'+h[1]+'" stroke-width="1.2" stroke-dasharray="4 5" opacity="0.55"/>';
+  });
+
+  /* ① Uu 空口：UE → gNB（AS/RRC，实线） */
+  s+=_iface(LANE.ue,180,LANE.gnb,180,C_GNBD,'',{m:'arUu',sw:2});
+  s+=_t((LANE.ue+LANE.gnb)/2,166,'① RRCSetupComplete',{a:'middle',s:9.5,w:800,f:C_GNBD});
+  s+=_t((LANE.ue+LANE.gnb)/2,196,'Uu 空口 · SRB1 · AS/RRC',{a:'middle',s:8,f:C_SEC});
+
+  /* gNB 中转说明 */
+  s+='<rect x="290" y="216" width="140" height="80" rx="8" fill="#fff" stroke="'+C_GNBD+'" stroke-width="1.3" stroke-dasharray="4 3"/>';
+  s+=_t(360,231,'gNB 不解读 NAS 内容',{a:'middle',s:8.5,w:800,f:C_GNBD});
+  s+=_t(360,246,'取出 PDU 原样转封装',{a:'middle',s:8,st:1,f:C_SEC});
+  s+='<line x1="304" y1="257" x2="416" y2="257" stroke="'+C_GNBL+'" stroke-width="1"/>';
+  s+=_t(360,270,'但附上 UE 位置 (TAI+Cell ID)',{a:'middle',s:7.4,w:700,f:C_AMF});
+  s+=_t(360,284,'→ AMF 借此掌握终端下落',{a:'middle',s:7.2,st:1,f:C_AMFD});
+
+  /* ② N2：gNB → AMF（NGAP，实线紫） */
+  s+=_iface(LANE.gnb,300,LANE.amf,300,C_AMF,'',{m:'arN2',sw:2});
+  s+=_t(505,286,'② Initial UE Message',{a:'middle',s:9.5,w:800,f:C_AMF});
+  s+=_t(505,316,'N2 · NGAP（NG-AP）',{a:'middle',s:8,f:C_SEC});
+
+  /* ③ AMF 解封 */
+  s+='<rect x="500" y="338" width="172" height="40" rx="8" fill="'+C_AMFL+'" stroke="'+C_AMF+'" stroke-width="1.4"/>';
+  s+=_t(586,353,'③ AMF 解封 NAS PDU',{a:'middle',s:9,w:800,f:C_AMFD,id:'s11open',op:0.25});
+  s+=_t(586,369,'读出 Registration Request',{a:'middle',s:8,st:1,f:C_SEC,id:'s11open2',op:0.25});
+
+  /* 动画信件 + 光晕（初始在 UE 处） */
+  s+='<circle id="s11glow" cx="'+LANE.ue+'" cy="180" r="20" fill="'+C_AMF+'" opacity="0"/>';
+  s+=_letter('s11pkt',LANE.ue,180,false);
+
+  /* 物理诚实脚注 */
+  s+='<rect x="40" y="398" width="640" height="64" rx="11" fill="#fff7ed" stroke="'+C_KEY+'" stroke-width="1.3"/>';
+  s+=_t(58,418,'物理诚实：',{s:10,w:800,f:C_KEYD});
+  s+=_t(132,418,'N1 是「逻辑」接口——顶弧只是抽象；NAS 物理上分两跳：空口(Uu)+N2，全程经 gNB 透明转发。',{s:8.8,f:C_SEC});
+  s+=_t(58,440,'gNB 看不懂 NAS：它只把这段 octet 串从 RRC 搬到 NGAP 容器里，内容对它始终是「黑盒」。',{s:8.8,f:C_SEC});
+  s+='</svg>';
+  return _wrap(s,8);
+}
+
+/* S1.1 动画：信件沿三段折线行进，到 AMF 后「解封」，循环 */
+var _relayRAF=null;
+function relayAnim(){
+  var pkt=document.getElementById('s11pkt'), glow=document.getElementById('s11glow');
+  var op1=document.getElementById('s11open'), op2=document.getElementById('s11open2');
+  if(!pkt) return;
+  var pts=[[LANE.ue,180],[LANE.gnb,180],[LANE.gnb,300],[LANE.amf,300]];
+  var segLen=[], total=0;
+  for(var i=0;i<pts.length-1;i++){var dx=pts[i+1][0]-pts[i][0],dy=pts[i+1][1]-pts[i][1];var L=Math.hypot(dx,dy);segLen.push(L);total+=L;}
+  var dur=3200, hold=1100, t0=null;
+  function at(dist){
+    var d=dist;
+    for(var i=0;i<segLen.length;i++){
+      if(d<=segLen[i]||i===segLen.length-1){
+        var f=segLen[i]?d/segLen[i]:0;
+        return [pts[i][0]+(pts[i+1][0]-pts[i][0])*f, pts[i][1]+(pts[i+1][1]-pts[i][1])*f];
+      }
+      d-=segLen[i];
+    }
+    return pts[pts.length-1];
+  }
+  function frame(ts){
+    if(!t0)t0=ts; var el=ts-t0;
+    if(el<dur){
+      var p=el/dur, pos=at(p*total);
+      pkt.setAttribute('transform','translate('+pos[0]+','+pos[1]+')');
+      glow.setAttribute('cx',pos[0]); glow.setAttribute('cy',pos[1]);
+      glow.setAttribute('opacity', 0.18*Math.sin(p*Math.PI));
+      if(op1){op1.setAttribute('opacity','0.25');op2.setAttribute('opacity','0.25');}
+      _relayRAF=Engine.addTimer(requestAnimationFrame(frame));
+    } else if(el<dur+hold){
+      pkt.setAttribute('transform','translate('+LANE.amf+',300)');
+      glow.setAttribute('opacity','0');
+      if(op1){op1.setAttribute('opacity','1');op2.setAttribute('opacity','1');}
+      _relayRAF=Engine.addTimer(requestAnimationFrame(frame));
+    } else {
+      Engine.LogEngine.inject('[NGAP] gNB → AMF：Initial UE Message（封装 NAS Registration Request），N2 送达。');
+      Engine.LogEngine.inject('[5GMM] AMF 解封 N1 NAS PDU：Registration Request(type=initial)，N1 逻辑链路建立。');
+      t0=null;
+      _relayRAF=Engine.addTimer(requestAnimationFrame(frame));
+    }
+  }
+  _relayRAF=Engine.addTimer(requestAnimationFrame(frame));
+}
+
+/* ══════════════════════════════════════════════════════════
+   S1.2 · SUCI：把真名锁进密码信封（ECIES Profile A）
+   ══════════════════════════════════════════════════════════ */
+function renderSUCI(){
+  var s='<svg viewBox="0 0 720 480" width="100%" height="100%" style="display:block;">';
+  s+=_bg('bgS')+_frame('bgS');
+  s+='<defs>'+_mk('arEnc',C_KEY)+'</defs>';
+  s+=_t(360,34,'SUCI：把真名锁进密码信封（ECIES · Profile A）',{a:'middle',s:14,w:800,f:C_AMFD});
+
+  /* —— 顶左：SUPI 拆分 —— */
+  s+='<rect x="40" y="56" width="300" height="92" rx="10" fill="#fff" stroke="'+C_SEC+'" stroke-width="1.4"/>';
+  s+=_t(56,72,'SUPI（IMSI）= 真实身份',{s:10,w:800,f:C_UED});
+  s+=_t(56,90,SUCI.supi,{s:13,w:800,f:C_UED});
+  s+='<rect x="56" y="104" width="120" height="34" rx="6" fill="'+C_ANSL+'" stroke="'+C_ANS+'" stroke-width="1.3"/>';
+  s+=_t(116,116,'MCC '+SUCI.mcc+' · MNC '+SUCI.mnc,{a:'middle',s:8.5,w:800,f:'#065f46'});
+  s+=_t(116,130,'明文·用于路由',{a:'middle',s:7.5,st:1,f:C_ANS});
+  s+='<rect x="186" y="104" width="138" height="34" rx="6" fill="'+C_REDL+'" stroke="'+C_RED+'" stroke-width="1.3"/>';
+  s+=_t(255,116,'MSIN '+SUCI.msin,{a:'middle',s:8.5,w:800,f:C_RED});
+  s+=_t(255,130,'敏感·必须加密',{a:'middle',s:7.5,st:1,f:C_RED});
+
+  /* —— 顶右：ECIES 引擎 —— */
+  s+='<rect x="372" y="56" width="308" height="160" rx="10" fill="'+C_KEYL+'" stroke="'+C_KEY+'" stroke-width="1.6"/>';
+  s+=_t(388,72,'ECIES 加密引擎（Profile A）',{s:10,w:800,f:C_KEYD});
+  s+=_t(388,90,'① UE 生成临时密钥对（X25519）',{s:8.6,f:C_SEC});
+  s+=_t(404,106,'eph_pub = '+SUCI.ephPub+'…',{s:8,f:C_KEYD});
+  s+=_t(388,124,'② ECDH(eph_priv, UDM_pub) → 共享密钥',{s:8.6,f:C_SEC});
+  s+=_t(404,140,'UDM_pub = '+SUCI.udmPub,{s:7.2,f:C_MUT});
+  s+=_t(388,158,'③ X9.63-KDF(SHA-256) → 加密钥 / IV / MAC钥',{s:8.6,f:C_SEC});
+  s+=_t(388,176,'④ AES-128-CTR 加密 MSIN → 密文',{s:8.6,f:C_SEC});
+  s+=_t(388,194,'⑤ HMAC-SHA-256 → MAC(8B) 防篡改',{s:8.6,f:C_SEC});
+  s+=_iface(324,121,372,121,C_KEY,'',{m:'arEnc',sw:1.8});
+  s+=_t(348,110,'MSIN',{a:'middle',s:7,w:700,f:C_KEY});
+
+  /* —— 中左：要点（含 RI 宝藏字段，采纳意见 2）—— */
+  s+='<rect x="40" y="162" width="300" height="78" rx="9" fill="#fff" stroke="#ddd6fe" stroke-width="1.2"/>';
+  s+=_t(56,178,'只加密 MSIN；MCC/MNC 留明文',{s:9,w:800,f:C_AMFD});
+  s+=_t(56,194,'→ 拜访网络据此把你「转交」给归属网(HPLMN)',{s:8.3,f:C_SEC});
+  s+='<line x1="56" y1="206" x2="324" y2="206" stroke="#eef2f7" stroke-width="1"/>';
+  s+=_t(56,219,'宝藏字段 · RI（Routing Indicator）：',{s:8,w:800,f:C_KEYD});
+  s+=_t(56,232,'同一归属网内有几百组 UDM，RI 精准寻址那一组切片。',{s:7.8,f:C_KEYD});
+
+  /* —— 底：SUCI 组装条 —— */
+  s+=_t(360,250,'组装 → SUCI（上空口的就是它）：',{a:'middle',s:10,w:800,f:C_ANS});
+  var segs=[
+    ['Type','0',C_SEC,52],['MCC',SUCI.mcc,C_ANS,52],['MNC',SUCI.mnc,C_ANS,46],
+    ['Routing',SUCI.ri,C_SEC,58],['Scheme','A(1)',C_KEYD,52],['HN PKID',SUCI.pkid,C_KEYD,54]
+  ];
+  var bx=40, by=256;
+  segs.forEach(function(g){
+    s+='<rect x="'+bx+'" y="'+by+'" width="'+g[3]+'" height="40" rx="5" fill="#fff" stroke="'+g[2]+'" stroke-width="1.3"/>';
+    s+=_t(bx+g[3]/2,by+13,g[0],{a:'middle',s:7,f:C_MUT});
+    s+=_t(bx+g[3]/2,by+28,g[1],{a:'middle',s:9,w:800,f:g[2]});
+    bx+=g[3]+6;
+  });
+  s+='<rect x="'+bx+'" y="'+by+'" width="'+(680-bx)+'" height="40" rx="5" fill="'+C_AMFL+'" stroke="'+C_AMF+'" stroke-width="1.5"/>';
+  s+=_t(bx+8,by+13,'Scheme Output = eph_pub ‖ 密文 ‖ MAC（加密载荷）',{s:7.4,w:700,f:C_AMFD});
+  s+=_t(bx+8,by+29,SUCI.ephPub+'… ‖ '+SUCI.ciph+' ‖ '+SUCI.mac,{s:7.4,f:C_AMFD});
+
+  /* NAI 形式 + 锁 */
+  s+='<rect x="40" y="312" width="640" height="30" rx="7" fill="#0d1521"/>';
+  s+=_t(54,327,'suci-0-'+SUCI.mcc+'-'+SUCI.mnc+'-'+SUCI.ri+'-'+SUCI.scheme+'-'+SUCI.pkid+'-'+SUCI.ephPub+'…'+SUCI.mac,{s:8.6,w:700,f:'#86efac'});
+  s+=_t(666,327,'🔒',{a:'middle',s:12});
+
+  /* 诚实条 */
+  s+='<rect x="40" y="356" width="640" height="104" rx="11" fill="#fff7ed" stroke="'+C_KEY+'" stroke-width="1.3"/>';
+  s+=_t(58,376,'物理诚实（泄密级红线）：',{s:10,w:800,f:C_RED});
+  s+=_t(58,396,'• 上行明文里出现的永远是 SUCI；SUPI（IMSI）绝不上空口——只存在于 UE/USIM 本地与 UDM 深处。',{s:8.7,f:C_SEC});
+  s+=_t(58,414,'• 本沙盘 hex 为真实 ECIES Profile A 运算结果（X25519 + X9.63-KDF + AES-128-CTR + HMAC-SHA-256，已 UDM 解密自校验）。',{s:8.4,f:C_SEC});
+  s+=_t(58,432,'• Scheme=0（null）仅用于无公钥的紧急呼叫等场景；正常注册一律用 Profile A/B 加密。',{s:8.6,f:C_SEC});
+  s+=_t(58,450,'• 解密只能由归属网络 UDM(SIDF) 完成——下一步看它如何「毙掉伪基站」。',{s:8.8,w:700,f:C_KEYD});
+  s+='</svg>';
+  return _wrap(s,6);
+}
+
+/* ══════════════════════════════════════════════════════════
+   S1.3 · 伪基站对照：4G 裸奔 vs 5G 加密
+   ══════════════════════════════════════════════════════════ */
+function renderCatcher(){
+  var s='<svg viewBox="0 0 720 480" width="100%" height="100%" style="display:block;">';
+  s+=_bg('bgC')+_frame('bgC');
+  s+='<defs>'+_mk('ar4g',C_RED)+_mk('ar5g',C_GNBD)+_mk('arOk',C_ANS)+'</defs>';
+  s+=_t(360,34,'同一个伪基站：4G 得手 · 5G 扑空',{a:'middle',s:14,w:800,f:C_AMFD});
+
+  /* —— 上：4G 场景（红）—— */
+  s+='<rect x="34" y="56" width="652" height="150" rx="12" fill="'+C_REDL+'" stroke="'+C_RED+'" stroke-width="1.5"/>';
+  s+=_t(50,74,'4G（及更早）：IMSI Catcher 一问就套出真身',{s:11,w:800,f:C_RED});
+  s+=_nfBox(60,92,120,52,C_RED,'#fff','伪基站','IMSI Catcher',{as:13,fs:7,sw:1.8,dash:'5 4'});
+  s+=_nfBox(548,92,120,52,C_UE,C_UEL,'UE','手机',{as:14,fs:7.5,sw:1.6});
+  s+=_iface(182,108,546,108,C_RED,'Identity Request',{m:'ar4g',lw:62,ls:8,sw:1.6});
+  s+=_iface(546,136,182,136,C_RED,'',{m:'ar4g',sw:1.8});
+  s+='<rect x="250" y="126" width="248" height="20" rx="5" fill="#fff" stroke="'+C_RED+'" stroke-width="1.2"/>';
+  s+=_t(374,136,'IMSI = '+SUCI.supi+'（明文！）',{a:'middle',s:9,w:800,f:C_RED});
+  s+=_t(360,176,'真实 IMSI 被明文套走 → 可长期追踪 / 定位用户',{a:'middle',s:9.5,w:700,f:C_RED});
+  s+=_t(360,193,'这就是「IMSI Catcher / Stingray」攻击的根',{a:'middle',s:8.3,st:1,f:C_SEC});
+
+  /* —— 下：5G 场景（绿/金）—— */
+  s+='<rect x="34" y="218" width="652" height="184" rx="12" fill="#f0fdf4" stroke="'+C_ANS+'" stroke-width="1.5"/>';
+  s+=_t(50,236,'5G：上空口的是 SUCI；私钥只在归属 UDM(SIDF) 手里',{s:11,w:800,f:'#065f46'});
+
+  s+=_nfBox(60,256,120,52,C_RED,'#fff','伪基站','IMSI Catcher',{as:13,fs:7,sw:1.8,dash:'5 4'});
+  s+=_nfBox(300,256,120,52,C_UE,C_UEL,'UE','手机',{as:14,fs:7.5,sw:1.6});
+  s+=_iface(300,282,182,282,C_GNBD,'',{m:'ar5g',sw:1.6});
+  s+='<rect x="190" y="318" width="200" height="20" rx="5" fill="#fff" stroke="'+C_GNBD+'" stroke-width="1.2"/>';
+  s+=_t(290,328,'拿到 SUCI = '+SUCI.ephPub+'…',{a:'middle',s:8,f:C_SEC});
+  s+='<rect x="60" y="318" width="120" height="38" rx="7" fill="'+C_REDL+'" stroke="'+C_RED+'" stroke-width="1.3"/>';
+  s+=_t(120,331,'无 UDM 私钥',{a:'middle',s:8.5,w:800,f:C_RED});
+  s+=_t(120,346,'✗ 解不开',{a:'middle',s:9,w:800,f:C_RED});
+
+  s+=_nfBox(560,256,110,52,C_KEY,C_KEYL,'UDM','SIDF·私钥',{as:15,fs:7,sw:1.8});
+  s+=_iface(420,282,560,282,C_KEY,'',{m:'arOk',sw:1.8,dash:'5 3'});
+  s+=_t(490,272,'经合法网络',{a:'middle',s:7.5,st:1,f:C_KEYD});
+  s+='<rect x="556" y="318" width="118" height="38" rx="7" fill="'+C_ANSL+'" stroke="'+C_ANS+'" stroke-width="1.3"/>';
+  s+=_t(615,331,'私钥解 SUCI',{a:'middle',s:8.5,w:800,f:'#065f46'});
+  s+=_t(615,346,'✓ 还原 SUPI',{a:'middle',s:9,w:800,f:C_ANS});
+
+  /* —— Unlinkability 不可追踪（采纳意见 3）—— */
+  s+=_t(360,370,'更狠的是：eph_pub 每次全新 → 同一 UE 被追问 100 次，吐出 100 个互不相同的密文',{a:'middle',s:8,w:700,f:C_AMF});
+  s+=_t(360,384,'伪基站连「这些请求是不是同一个人」都判断不了 —— 这就是 Unlinkability（不可追踪）',{a:'middle',s:8,st:1,f:C_AMFD});
+
+  s+=_t(360,397,'两重保护 = 保密性（拿不到真名）+ 不可追踪（认不出是同一人）',{a:'middle',s:8.6,w:700,f:'#065f46'});
+
+  /* 越界灰标 */
+  s+='<rect x="34" y="414" width="652" height="50" rx="10" fill="#f8fafc" stroke="'+C_MUT+'" stroke-width="1.2" stroke-dasharray="5 4"/>';
+  s+=_t(50,432,'越界（黑盒，不展开）：',{s:9,w:800,f:C_MUT});
+  s+=_t(184,432,'UDM 实际解密发生在 Stage 2 鉴权流程（AMF→AUSF→UDM）；本步只点破「谁能解、谁不能解」。',{s:8.3,f:C_SEC});
+  s+=_t(50,450,'SIDF 私钥的密钥管理 / 证书体系亦属运营商内部黑盒，沙盘不涉及。',{s:8.3,f:C_MUT});
+  s+='</svg>';
+  return _wrap(s,6);
+}
+
+/* ══════════════════════════════════════════════════════════
+   VIZ ROUTER + HOOKS
+   ══════════════════════════════════════════════════════════ */
+Engine.renderVizSVG = function(subIdx){
+  if(subIdx===0) return renderHandoff();
+  if(subIdx===1) return renderRelay();
+  if(subIdx===2) return renderSUCI();
+  if(subIdx===3) return renderCatcher();
+  return renderHandoff();
+};
+Engine.onAfterRender = function(subIdx){
+  if(subIdx===1){ Engine.addTimer(setTimeout(relayAnim, 500)); }
+  if(subIdx===2){
+    /* 真名 / 隐藏标识就位（顶栏 SUCI 标签亮起）。只有「算出来」后才写——符合零先验。 */
+    Engine.ctxSet('nas.supi', SUCI.supi);
+    Engine.ctxSet('nas.suci', SUCI.nai);
+  }
+};
+Engine.onStageExit = function(){
+  if(_relayRAF){ cancelAnimationFrame(_relayRAF); _relayRAF=null; }
+};
+Engine.boot({ stageIdx: 1 });
+</script>
+</body>
+</html>

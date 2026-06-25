@@ -1,4 +1,4 @@
-> 📂 代码库导航： > [ofdm_basics_sim.py](./ofdm-basics-sim) 
+> 📂 代码库：`simulation/phase1/ofdm_basics_sim.py`
 
 # ofdm_basics_sim.py · 仿真说明文档
 

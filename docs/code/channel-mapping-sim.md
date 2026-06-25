@@ -1,4 +1,4 @@
-> 📂 代码库导航： > [channel_mapping_sim.py](./channel-mapping-sim) 
+> 📂 代码库：`simulation/phase1/channel_mapping_sim.py`
 
 # channel_mapping_sim.py · 仿真说明文档
 

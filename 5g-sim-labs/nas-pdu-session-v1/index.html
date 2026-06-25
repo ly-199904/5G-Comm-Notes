@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>5G 核心网注册 &amp; PDU 会话 · 交互仿真学习台</title>
+<link rel="stylesheet" href="design-system.css">
+<style>
+  .hub-wrap {
+    width:100%; max-width:1600px; height:calc(100vh - 24px);
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:18px; overflow:hidden; box-shadow:var(--shadow-lg);
+  }
+  .hub-sidebar-footer {
+    margin-top:auto; padding-top:12px; border-top:1px solid var(--border);
+    font-size:10px; color:var(--text-mut); font-family:var(--font-mono); line-height:1.7;
+  }
+  .hub-section-label {
+    font-size:9.5px; text-transform:uppercase; letter-spacing:.1em; color:var(--text-mut);
+    font-family:var(--font-mono); font-weight:700; padding:10px 4px 5px; margin-top:4px;
+  }
+  .hub-divider { height:1px; background:var(--border-2); margin:6px 0; }
+</style>
+</head>
+<body>
+<div class="hub-wrap">
+  <div class="hub-layout">
+
+    <div class="hub-sidebar">
+      <div class="hub-sidebar-title">
+        5G 核心网注册 &amp; PDU 会话<br>
+        <span style="font-size:10px;color:var(--text-mut);font-weight:400;">交互式仿真学习台 · 2.0（承接空口接入 1.0）</span>
+      </div>
+
+      <div class="hub-section-label">· 注册与鉴权阶段</div>
+      <button class="hub-stage-btn active" onclick="loadStage(0)" id="nav-0">
+        <span class="hub-stage-num">⓪</span>5GC 架构与 SBA
+        <span class="hub-stage-badge done">完成</span>
+      </button>
+      <button class="hub-stage-btn" onclick="loadStage(1)" id="nav-1">
+        <span class="hub-stage-num">①</span>NAS 上行接管
+        <span class="hub-stage-badge done">完成</span>
+      </button>
+      <button class="hub-stage-btn" onclick="loadStage(2)" id="nav-2">
+        <span class="hub-stage-num">②</span>5G-AKA 鉴权
+        <span class="hub-stage-badge done">完成</span>
+      </button>
+      <button class="hub-stage-btn" onclick="loadStage(3)" id="nav-3">
+        <span class="hub-stage-num">③</span>NAS 安全激活
+        <span class="hub-stage-badge done">完成</span>
+      </button>
+      <button class="hub-stage-btn" onclick="loadStage(4)" id="nav-4">
+        <span class="hub-stage-num">④</span>注册完成 / GUTI
+        <span class="hub-stage-badge done">完成</span>
+      </button>
+
+      <div class="hub-section-label">· 会话与数据面阶段</div>
+      <button class="hub-stage-btn" onclick="loadStage(5)" id="nav-5">
+        <span class="hub-stage-num">⑤</span>PDU 会话建立
+        <span class="hub-stage-badge done">完成</span>
+      </button>
+      <button class="hub-stage-btn" onclick="loadStage(6)" id="nav-6">
+        <span class="hub-stage-num">⑥</span>QoS 与 DRB 落地
+        <span class="hub-stage-badge done">完成</span>
+      </button>
+
+      <div class="hub-sidebar-footer">
+        3GPP Rel-15/16 &nbsp;·&nbsp; TS 23.501/502 · 24.501 · 33.501 · 37.324<br>
+        Stage HTML 可独立运行 · NR_CTX 与 1.0 共享（Master Mode）
+      </div>
+    </div>
+
+    <iframe class="hub-frame" id="stageFrame" src="stage-0-5gc-sba.html"></iframe>
+  </div>
+</div>
+
+<script>
+  var FILES = [
+    'stage-0-5gc-sba.html','stage-1-nas-uplink.html','stage-2-5g-aka.html',
+    'stage-3-nas-security.html','stage-4-reg-accept.html',
+    'stage-5-pdu-setup.html','stage-6-qos-drb.html',
+  ];
+  var cur = 0;
+  function loadStage(idx) {
+    document.querySelectorAll('.hub-stage-btn').forEach(function(b,i){
+      b.classList.toggle('active', i===idx);
+    });
+    cur = idx;
+    document.getElementById('stageFrame').src = FILES[idx];
+  }
+</script>
+</body>
+</html>
