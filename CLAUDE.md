@@ -2,11 +2,10 @@
 
 ## 项目概述
 
-个人 5G NR / NTN（星地融合通信）学习笔记库，目标是从"协议+代码+仿真+交互式学习台"四个维度建立通信系统工程能力。
+个人 5G NR / NTN（星地融合通信）学习笔记库，目标是从"协议+代码+仿真"三个维度建立通信系统工程能力。
 
 - **仓库**: github.com/ly-199904/5G-Comm-Notes
 - **在线站点**: VitePress 构建，GitHub Pages 部署（base: `/5G-Comm-Notes/`）
-- **交互式仿真**: 两个独立学习台子项目（`5g-sim-labs/`），纯静态 HTML/JS/SVG，无需构建工具
 - **规范基准**: 3GPP Rel-15/16/17
 - **语言**: 中文（zh-CN）
 
@@ -23,62 +22,15 @@
 │   ├── phase0/                    # 先导：通信原理 / 无线通信基础
 │   ├── phase1/                    # 基石：Numerology / 资源网格 / 信道映射 / OFDM
 │   ├── phase2/                    # 骨架：RACH / PDCCH / HARQ / MIMO / CSI / Beam Mgmt / SIB1
-│   ├── phase3/                    # NTN 前沿：架构 / TA / Doppler / Rel-17 增强
+│   ├── phase3/                    # 连接管理：RRC状态机 / SI寻呼 / CA / DC / 切换 / NTN增强
 │   └── code/                      # 仿真说明文档（每篇对应一个 .py）
 ├── simulation/
 │   ├── phase1/                    # Phase 1 仿真脚本 + 输出图片
 │   ├── phase2/                    # Phase 2 仿真脚本 + 输出图片
+│   ├── phase3/                    # Phase 3 仿真脚本 + 输出图片
 │   └── requirements.txt
-├── 5g-sim-labs/                   # ★ 交互式仿真学习台
-│   ├── initial-access-v2/         # 1.0：5G NR 空口接入（Stage 0~8，全部完成）
-│   └── nas-pdu-session-v1/        # 2.0：NAS 注册 & PDU 会话（Stage 0 完成，1~6 骨架）
 └── package.json                   # VitePress + Mermaid 插件
 ```
-
-## 交互式仿真学习台（5g-sim-labs/）
-
-### 1.0 — initial-access-v2：空口接入完整流程（Stage 0~8 ✅ 全部完成）
-
-9 Stage 覆盖 UE 上电 → RRC_CONNECTED 全过程：
-
-| Stage | 主题 | 核心教学点 |
-|-------|------|-----------|
-| 0 | UE 开机 | Tc 时钟基准、先验字典 |
-| 1 | gNB SSB 广播 | Numerology / SSB Burst / GSCN / 时频网格 / MIB Polar 编码 |
-| 2 | PSS 检测 | m-序列 / 零填充过采样 / 盲相关捞针 / 频偏估计 |
-| 3 | SSS 检测 | 双 m-序列相乘 / N_ID¹ 解出 / PCI 合成 |
-| 4 | PBCH 译码 & MIB | DMRS 信道估计+插值 / 两层解扰(夹心+自举) / Polar SCL / MIB 解析+SFN 拼接 |
-| 5 | CORESET#0 盲检 | pdcch-ConfigSIB1 查表 / 时频反推 / PDCCH 盲检 / DCI 1_0 |
-| 6 | SIB1 解析 | PDSCH 调度 / ASN.1 解码 / RACH 配置 + 小区驻留判决 |
-| 7 | PRACH 随机接入 | Preamble / RA-RNTI / Msg1~2 / RAR + TA |
-| 8 | RRC 建立 | SRB0 / Msg3~4 / 竞争解决 / 安全激活 |
-
-**核心架构**：纯静态 HTML/JS/SVG。Engine 状态机 + NR_CTX 全局上下文总线 + `{ subSteps:[...] }` 数据结构。详细文档见 [5g-sim-labs/initial-access-v2/CLAUDE.md](5g-sim-labs/initial-access-v2/CLAUDE.md)。
-
-### 2.0 — nas-pdu-session-v1：NAS 注册 & PDU 会话（Stage 0 ✅，1~6 🔧）
-
-承接 1.0 终点（RRC_CONNECTED），讲完核心网注册与用户面建立：
-
-| Stage | 主题 | 状态 |
-|-------|------|------|
-| 0 | 5GC 架构与 SBA（AMF/SMF/UPF/AUSF/UDM + 服务化总线） | ✅ 完成 |
-| 1 | NAS 上行接管（Registration Request → AMF，SUCI 隐藏 SUPI） | 🔧 骨架 |
-| 2 | 5G-AKA 鉴权（密钥树 K→K_AUSF→K_SEAF→K_AMF→K_gNB） | 🔧 骨架 |
-| 3 | NAS 安全激活（NAS SMC/SMP，双层安全） | 🔧 骨架 |
-| 4 | 注册完成 / GUTI 分配 | 🔧 骨架 |
-| 5 | PDU 会话建立（SMF/UPF/N4/PFCP） | 🔧 骨架 |
-| 6 | QoS 与 DRB 落地（5QI/QFI/SDAP/首个 IP 包） | 🔧 骨架 |
-
-**边界**：N6 接口是物理世界尽头，PCF/CHF 隐身，多切片仅提 S-NSSAI。详细文档见 [5g-sim-labs/nas-pdu-session-v1/CLAUDE.md](5g-sim-labs/nas-pdu-session-v1/CLAUDE.md)。
-
-### 通用架构规则（两个子项目共用）
-
-- **数据**：`{ subSteps: [...] }` 包裹，禁止裸数组
-- **总线**：`Engine.ctxSet(key, val)` 写入 NR_CTX（2.0 新增 `nas.*` 命名空间）
-- **Hooks**：`renderVizSVG` / `onAfterRender` / `onStageExit` / `Engine.boot({ stageIdx: N })`
-- **SVG**：`viewBox="0 0 720 495"` + `width="100%" height="100%" style="display:block;"`
-- **颜色**：每屏五角色（主色/答案绿 #059669/对照灰 #94a3b8/高光红 #dc2626/底层渐变）
-- **动画**：静态 DOM + 改属性，定时器经 `Engine.addTimer()` 注册
 
 ## VitePress 文档站点
 
@@ -89,7 +41,7 @@
 | Phase 0 | 通信原理、无线通信基础 | ✅ 完成 |
 | Phase 1 | Numerology、Resource Grid、Channel Mapping、OFDM | ✅ 完成 |
 | Phase 2 | RACH ✅、PDCCH ✅、HARQ ✅、MIMO ✅、CSI ✅、Beam Mgmt ✅ | ✅ 全部完成 |
-| Phase 3 | NTN 架构、TA、Doppler、Rel-17 增强 | ⬜ 待开始 |
+| Phase 3 | RRC 状态机、SI/Paging、CA、NTN 增强（3.1~3.3 ✅，3.4~3.6 🔜） | 🔄 进行中 |
 
 ### 笔记输出规范（7 项）
 
@@ -105,12 +57,11 @@
 - **Vue 组件**: `.vitepress/components/` 下 PascalCase 命名，自动全局注册
 - **部署**: `npm run docs:build` → 推送 `gh-pages`
 
-## 当前状态（2026-06-01）
+## 当前状态（2026-06-22）
 
-- **学习台 1.0**：Stage 0~8 全部完成（空口接入主线收官）
-- **学习台 2.0**：Stage 0 完成（5GC 架构与 SBA），Stage 1~6 骨架待开发
-- **笔记库**：Phase 0~2 共 14 篇笔记 + 仿真 + 26 个 Vue 组件已完成
-- **Phase 3 NTN**：待开始
+- **笔记库**：Phase 0~2 共 12 篇笔记 + 仿真 + 29 个 Vue 组件已完成
+- **Phase 3 连接管理**：3.1 RRC 状态机 ✅、3.2 SI/Paging ✅、3.3 CA ✅，3.4~3.6 待开发
+- **NTN 增强**：架构/TA/Doppler/Rel-17 文档骨架就绪，深度推导待补
 
 ## 编码行为准则
 
@@ -129,5 +80,4 @@
 ### 4. 以可验证目标驱动
 - 改笔记 → `npm run docs:dev` 验证 KaTeX/Mermaid
 - 改仿真 → `python xxx_sim.py` 验证图片生成
-- 改学习台 → 浏览器打开对应 stage HTML，逐子步验证
 - 多步任务先列清单，逐条验证后勾掉
