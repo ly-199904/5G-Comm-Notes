@@ -23,7 +23,8 @@ export default withMermaid(defineConfig({
       { text: 'Phase 0', link: '/phase0/' },
       { text: 'Phase 1', link: '/phase1/' },
       { text: 'Phase 2', link: '/phase2/rach-procedure' },
-      { text: 'Phase 3', link: '/phase3/ntn-architecture' },
+      { text: 'Phase 3', link: '/phase3/rrc-state-machine' },
+      { text: 'Phase 4', link: '/phase4/ntn-architecture' },
       { text: '代码库',  link: '/code/numerology-sim' },
     ],
 
@@ -61,22 +62,22 @@ export default withMermaid(defineConfig({
         ],
       },
       {
-        text: '🛰️ Phase 3 · NTN 前沿',
-        collapsed: true,
-        items: [
-          { text: 'NTN 架构概览',              link: '/phase3/ntn-architecture' },
-          { text: 'Timing Advance 大时延补偿',  link: '/phase3/timing-advance' },
-          { text: 'Doppler 频移补偿',           link: '/phase3/doppler-compensation' },
-          { text: 'Rel-17 NTN 增强特性',        link: '/phase3/rel17-enhancements' },
-        ],
-      },
-      {
         text: '🔗 Phase 3 · 连接管理与移动性',
         collapsed: false,
         items: [
           { text: '3.1 RRC 状态机', link: '/phase3/rrc-state-machine' },
           { text: '3.2 系统消息与寻呼', link: '/phase3/si-paging' },
           { text: '3.3 载波聚合', link: '/phase3/carrier-aggregation' },
+        ],
+      },
+      {
+        text: '🛰️ Phase 4 · NTN 专题',
+        collapsed: true,
+        items: [
+          { text: 'NTN 架构概览',              link: '/phase4/ntn-architecture' },
+          { text: 'Timing Advance 大时延补偿',  link: '/phase4/timing-advance' },
+          { text: 'Doppler 频移补偿',           link: '/phase4/doppler-compensation' },
+          { text: 'Rel-17 NTN 增强特性',        link: '/phase4/rel17-enhancements' },
         ],
       },
       {

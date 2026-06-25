@@ -22,7 +22,8 @@
 │   ├── phase0/                    # 先导：通信原理 / 无线通信基础
 │   ├── phase1/                    # 基石：Numerology / 资源网格 / 信道映射 / OFDM
 │   ├── phase2/                    # 骨架：RACH / PDCCH / HARQ / MIMO / CSI / Beam Mgmt / SIB1
-│   ├── phase3/                    # 连接管理：RRC状态机 / SI寻呼 / CA / DC / 切换 / NTN增强
+│   ├── phase3/                    # 连接管理与移动性：RRC / SI-Paging / CA / DC / 功率控制 / 移动性
+│   └── phase4/                    # NTN 专题：架构 / TA / Doppler / Rel-17 增强
 │   └── code/                      # 仿真说明文档（每篇对应一个 .py）
 ├── simulation/
 │   ├── phase1/                    # Phase 1 仿真脚本 + 输出图片
@@ -41,7 +42,8 @@
 | Phase 0 | 通信原理、无线通信基础 | ✅ 完成 |
 | Phase 1 | Numerology、Resource Grid、Channel Mapping、OFDM | ✅ 完成 |
 | Phase 2 | RACH ✅、PDCCH ✅、HARQ ✅、MIMO ✅、CSI ✅、Beam Mgmt ✅ | ✅ 全部完成 |
-| Phase 3 | RRC 状态机、SI/Paging、CA、NTN 增强（3.1~3.3 ✅，3.4~3.6 🔜） | 🔄 进行中 |
+| Phase 3 | 连接管理与移动性（三模块：控制面与Idle / 容量扩展 / 闭环与移动性）| 🔄 3.1~3.3 ✅，3.4~3.6 🔜 |
+| Phase 4 | NTN 专题：架构 / TA / Doppler / Rel-17 增强（+ 主线迁入的 NTN 深推导）| 🚧 桩文件，分批回填 |
 
 ### 笔记输出规范（7 项）
 
@@ -60,8 +62,8 @@
 ## 当前状态（2026-06-22）
 
 - **笔记库**：Phase 0~2 共 12 篇笔记 + 仿真 + 29 个 Vue 组件已完成
-- **Phase 3 连接管理**：3.1 RRC 状态机 ✅、3.2 SI/Paging ✅、3.3 CA ✅，3.4~3.6 待开发
-- **NTN 增强**：架构/TA/Doppler/Rel-17 文档骨架就绪，深度推导待补
+- **Phase 3 连接管理**：3.1 RRC 状态机 ✅、3.2 SI/Paging ✅、3.3 CA ✅；3.4 DC / 3.5 功率控制 / 3.6 移动性 待写（用三层标准）
+- **Phase 4 NTN**：四桩已从 phase3 迁入 phase4；Doppler/TA 已由 Numerology §5 迁入种子内容
 
 ## 编码行为准则
 
